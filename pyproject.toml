@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aion2-global-translator"
+version = "0.1.0"
+description = "Community native text localization toolkit for AION 2 Steam"
+readme = "README.md"
+requires-python = ">=3.12"
+license = {text = "Apache-2.0"}
+dependencies = ["blake3>=1.0,<2", "lz4>=4.4,<5", "cryptography>=43,<49"]
+
+[project.gui-scripts]
+aion2-global-translator = "aion2_global_translator.gui:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

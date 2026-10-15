@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="360" viewBox="0 0 1280 360" role="img" aria-labelledby="title desc">
+  <title id="title">AION 2 Global Translator</title>
+  <desc id="desc">Native game text, a language you choose. An independent Windows localization tool.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#101c31"/>
+      <stop offset="1" stop-color="#08111e"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#62e4dc"/>
+      <stop offset="1" stop-color="#8bbaff"/>
+    </linearGradient>
+    <radialGradient id="glow">
+      <stop offset="0" stop-color="#256f80" stop-opacity=".28"/>
+      <stop offset="1" stop-color="#256f80" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1280" height="360" rx="22" fill="url(#bg)"/>
+  <rect x="1" y="1" width="1278" height="358" rx="21" fill="none" stroke="#26384e"/>
+  <ellipse cx="1045" cy="160" rx="290" ry="230" fill="url(#glow)"/>
+  <g fill="none" stroke="#58c8d0" stroke-opacity=".17" stroke-width="1.3">
+    <circle cx="1040" cy="170" r="125"/>
+    <ellipse cx="1040" cy="170" rx="64" ry="125"/>
+    <ellipse cx="1040" cy="170" rx="125" ry="45"/>
+    <path d="M915 170h250M1040 45v250"/>
+  </g>
+  <rect x="52" y="51" width="216" height="29" rx="14.5" fill="#173c43" stroke="#327278"/>
+  <circle cx="69" cy="65.5" r="4" fill="#70e7cc"/>
+  <text x="82" y="70" fill="#b7f5e9" font-family="Segoe UI, Arial, sans-serif" font-size="11.5" font-weight="600" letter-spacing="1.2">OPEN SOURCE · WINDOWS</text>
+  <text x="50" y="145" fill="#f1f6ff" font-family="Segoe UI, Arial, sans-serif" font-size="57" font-weight="700" letter-spacing="-.8">AION 2</text>
+  <text x="50" y="206" fill="url(#accent)" font-family="Segoe UI, Arial, sans-serif" font-size="49" font-weight="600" letter-spacing="-1.1">Global Translator</text>
+  <text x="53" y="248" fill="#b2c3d9" font-family="Segoe UI, Arial, sans-serif" font-size="19">Native text. A language you choose.</text>
+  <text x="53" y="312" fill="#7c91ac" font-family="Segoe UI, Arial, sans-serif" font-size="13">Local source files</text>
+  <path d="M168 308h30m-6-4 6 4-6 4" stroke="#5f8ea4" fill="none" stroke-width="1.5"/>
+  <text x="215" y="312" fill="#7c91ac" font-family="Segoe UI, Arial, sans-serif" font-size="13">Validated translation</text>
+  <path d="M352 308h30m-6-4 6 4-6 4" stroke="#5f8ea4" fill="none" stroke-width="1.5"/>
+  <text x="398" y="312" fill="#7c91ac" font-family="Segoe UI, Arial, sans-serif" font-size="13">Backup &amp; install</text>
+  <g transform="translate(850 100)">
+    <rect x="0" y="0" width="250" height="98" rx="13" fill="#13243a" stroke="#37506d"/>
+    <rect x="19" y="19" width="44" height="22" rx="6" fill="#253a55"/>
+    <text x="41" y="34.5" text-anchor="middle" fill="#b8cbe3" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="600">EN</text>
+    <path d="M20 59h184M20 72h137" stroke="#617997" stroke-width="5" stroke-linecap="round"/>
+    <rect x="50" y="72" width="250" height="98" rx="13" fill="#133239" stroke="#4b9c9b"/>
+    <rect x="69" y="91" width="68" height="22" rx="6" fill="#24504e"/>
+    <text x="103" y="106.5" text-anchor="middle" fill="#baf3df" font-family="Segoe UI, Arial, sans-serif" font-size="11.5" font-weight="600">TARGET</text>
+    <path d="M70 131h184M70 144h137" stroke="#8fcac3" stroke-width="5" stroke-linecap="round"/>
+  </g>
+</svg>
