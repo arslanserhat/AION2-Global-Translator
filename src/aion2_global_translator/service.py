@@ -18,6 +18,7 @@ import sqlite3
 import subprocess
 import sys
 import tempfile
+import uuid
 
 BUILD = "25926599"
 PAK = "pakchunk502000-Windows_0_P"
@@ -27,6 +28,40 @@ ORIGINAL_DAT_SHA = "694a7d39e6bbe27c85dafa127d3feaca2a4a7a3c502ccf7385078b9c74dc
 PAK_AES = "06038EF544B6007614F8574F1B7C2A3F0D565F74CDCC1B366B4EA1A17B97CBFF"
 MARKER = b"AION2_LOOSE"
 EXTENSIONS = (".pak", ".sig", ".ucas", ".utoc")
+DISPLAY_ENTRY_COUNT = 153042
+
+
+def _turkish_language(language):
+    return isinstance(language, str) and language.lower().replace("_", "-").split("-")[0] == "tr"
+
+
+def _legacy_structure_and_abbreviations(source, translated):
+    """Check legacy formatting while diagnosing translated HP/MP/etc. labels.
+
+    Only recognized standalone abbreviation tokens become spaces. Runtime tags,
+    macros, printf arguments, numbers and controls still pass the normal strict
+    validator. Provider results never use this legacy compatibility path.
+    """
+    from .protection import GAME_ABBREVIATIONS, protected_parts, validate
+    if source.strip() and not translated.strip():
+        raise ValueError("The installed legacy translation is empty.")
+    abbreviations = set(GAME_ABBREVIATIONS)
+    def structure(text):
+        pieces, last, observed = [], 0, Counter()
+        for start, end, literal in protected_parts(text):
+            pieces.append(text[last:start])
+            if literal in abbreviations:
+                observed[literal] += 1
+                pieces.append(" " * (end - start))
+            else:
+                pieces.append(literal)
+            last = end
+        pieces.append(text[last:])
+        return "".join(pieces), observed
+    original, expected = structure(source)
+    current, actual = structure(translated)
+    validate(original, current)
+    return None if expected == actual else {"source": dict(expected), "installed": dict(actual)}
 
 
 def sha(data):
@@ -194,6 +229,20 @@ class TranslatorService:
             raise ValueError("No local Turkish pack is ready. Use Build Translation to generate one from your game or import a complete translation map first.")
         return self.install_stage(game_dir, stage)
 
+    def apply_language(self, game_dir, target_language):
+        """Apply the selected private pack, or restore the English source."""
+        from .multilingual import normalize_language
+        code = normalize_language(target_language)
+        self._closed()
+        if code.split('-')[0] == 'en':
+            state = self.inspect(game_dir)
+            return self.restore(game_dir) if state['status'] == 'installed' else state
+        stage = self.data / 'stages' / code
+        meta = json.loads((stage / 'patch-meta.json').read_text('utf-8'))
+        if normalize_language(meta.get('target_language', '')) != code:
+            raise ValueError('Prepared pack language does not match the selected target')
+        return self.install_stage(game_dir, stage)
+
     def install_stage(self, game_dir, stage):
         self._closed()
         game, pakdir, loose, backup = self.paths(game_dir)
@@ -329,11 +378,134 @@ class TranslatorService:
             raise ValueError("Source codec verification failed")
         return doc, manifest
 
+    def repair_turkish_headings(self, game_dir):
+        """Prepare a reversible heading-only repair, then use normal installation."""
+        from .codec import L10NDocument
+        from .display import apply_turkish_heading_compatibility
+        from .protection import validate
+        from .terminology import apply_turkish_context_terms
+        self._closed()
+        game, pakdir, loose, backup = self.paths(game_dir)
+        state = self._state(pakdir, loose, backup)
+        if state is None or not _turkish_language(state.get("target_language")):
+            raise ValueError("A verified installed Turkish translation is required for heading repair")
+        statepath = backup / "state.json"
+        state_bytes = statepath.read_bytes()
+        if json.loads(state_bytes.decode("utf-8")) != state:
+            raise ValueError("Installed translation state changed during heading repair preparation")
+        installed_dat = loose.read_bytes()
+        if sha(installed_dat) != state.get("dat_sha256"):
+            raise ValueError("Installed translation changed during heading repair preparation")
+        self.emit("Reading the verified Turkish translation and original source", 5)
+        original, manifest = self._extract(game)
+        source = original.table.as_dict()
+        installed = L10NDocument.decode(installed_dat, "en-US", manifest)
+        current = installed.table.as_dict()
+        if (len(source) != DISPLAY_ENTRY_COUNT or len(original.table.entries) != DISPLAY_ENTRY_COUNT
+                or len(current) != DISPLAY_ENTRY_COUNT or len(installed.table.entries) != DISPLAY_ENTRY_COUNT
+                or set(current) != set(source) or installed.table.namespace.text != "AION2"
+                or original.table.namespace.text != "AION2"):
+            raise ValueError("Installed Turkish translation does not match the complete original source key set")
+        abbreviation_differences = {}
+        for key in source:
+            try:
+                diagnostic = _legacy_structure_and_abbreviations(source[key], current[key])
+            except ValueError as error:
+                raise ValueError("Installed legacy translation has invalid structural literals: " + key) from error
+            if diagnostic:
+                abbreviation_differences[key] = diagnostic
+        canonical, context_report = apply_turkish_context_terms(source, current)
+        fixed_names = context_report["rule_keys"]["skill_snipe"]
+        corrected, display_report = apply_turkish_heading_compatibility(canonical)
+        affected = sorted(key for key in source if corrected[key] != current[key])
+        for key in affected:
+            validate(current[key], corrected[key])
+        display_report = dict(display_report, canonical_skill_name_fixes=fixed_names,
+                              changed_installed_entries=len(affected), context_terms_report=context_report,
+                              legacy_abbreviation_difference_count=len(abbreviation_differences))
+        if not affected:
+            return dict(status="installed", target_language="tr", entries=len(source),
+                        display_profile=display_report["profile"], display_report=display_report,
+                        context_terms_report=context_report,
+                        legacy_abbreviation_differences=abbreviation_differences,
+                        message="Installed Turkish headings already use the compatible display profile.")
+        dat = original.encode(original.table.translated(corrected))
+        decoded = L10NDocument.decode(dat, "en-US", manifest)
+        if (decoded.table.as_dict() != corrected or len(decoded.table.entries) != DISPLAY_ENTRY_COUNT
+                or decoded.table.namespace.text != "AION2"
+                or [key.text for key, _ in decoded.table.entries] != [key.text for key, _ in original.table.entries]):
+            raise ValueError("Heading repair failed exact dictionary/order verification")
+        stages = self.data / "stages"
+        prior = stages / "tr-before-font-fix"
+        prior_meta = dict(steam_build=BUILD, target_language="tr", source_entry_count=len(source),
+                          dat_sha256=sha(installed_dat), original_pak_sha256=ORIGINAL_SHA,
+                          quality_gate_passed=True, remaining_untranslated_candidate_entries=0,
+                          restore_point="before-turkish-heading-font-repair",
+                          validation_scope="verified legacy translation, complete keys, original structural literals and codec decode; not a full semantic review",
+                          human_reviewed=False, in_game_verified=False)
+        if not prior.exists():
+            stages.mkdir(parents=True, exist_ok=True)
+            temporary = stages / (".tr-before-font-fix-" + uuid.uuid4().hex)
+            temporary.mkdir()
+            try:
+                atomic(temporary / "L10NString.dat", installed_dat)
+                json_write(temporary / "installed-state.json", state)
+                json_write(temporary / "patch-meta.json", prior_meta)
+                # Windows rename refuses to overwrite an existing directory.
+                try:
+                    temporary.rename(prior)
+                except FileExistsError:
+                    pass
+            finally:
+                if temporary.exists():
+                    for name in ("L10NString.dat", "installed-state.json", "patch-meta.json"):
+                        (temporary / name).unlink(missing_ok=True)
+                    temporary.rmdir()
+        saved_meta = json.loads((prior / "patch-meta.json").read_text("utf-8"))
+        saved_dat = (prior / "L10NString.dat").read_bytes()
+        if (saved_meta.get("steam_build") != BUILD or saved_meta.get("original_pak_sha256") != ORIGINAL_SHA
+                or saved_meta.get("source_entry_count") != DISPLAY_ENTRY_COUNT
+                or saved_meta.get("target_language") != "tr" or saved_meta.get("dat_sha256") != sha(saved_dat)
+                or saved_meta.get("quality_gate_passed") is not True
+                or saved_meta.get("remaining_untranslated_candidate_entries") != 0):
+            raise ValueError("Existing pre-repair pack is invalid; it was preserved without overwriting")
+        saved = L10NDocument.decode(saved_dat, "en-US", manifest)
+        if (len(saved.table.entries) != DISPLAY_ENTRY_COUNT or set(saved.table.as_dict()) != set(source)
+                or saved.table.namespace.text != "AION2"):
+            raise ValueError("Existing pre-repair pack has a different key set; it was not overwritten")
+        stage = stages / "tr-font-safe"
+        meta = dict(steam_build=BUILD, target_language="tr", source_entry_count=len(source),
+                    dat_sha256=sha(dat), original_pak_sha256=ORIGINAL_SHA, quality_gate_passed=True,
+                    remaining_untranslated_candidate_entries=0, display_profile=display_report["profile"],
+                    display_report=display_report, repaired_from_dat_sha256=sha(installed_dat),
+                    context_terms_report=context_report,
+                    legacy_abbreviation_difference_count=len(abbreviation_differences),
+                    prior_stage=str(prior), human_reviewed=False, in_game_verified=False,
+                    validation_scope="font display and exact context terminology repair of verified legacy translation; original structural literals, current protected literals and exact codec roundtrip; not a full semantic review")
+        atomic(stage / "L10NString.dat", dat)
+        json_write(stage / "display-report.json", display_report)
+        json_write(stage / "context-terms-report.json", context_report)
+        json_write(stage / "legacy-abbreviation-report.json", abbreviation_differences)
+        json_write(stage / "patch-meta.json", meta)
+        self._closed()
+        if (self._state(pakdir, loose, backup) != state or loose.read_bytes() != installed_dat
+                or statepath.read_bytes() != state_bytes):
+            raise ValueError("Installed translation changed while preparing heading repair; nothing was installed")
+        self.emit("Compatible Turkish heading pack prepared; installing through verified backups", 90)
+        result = self.install_stage(game, stage)
+        return dict(result, stage=str(stage), prior_stage=str(prior),
+                    display_profile=display_report["profile"], display_report=display_report,
+                    context_terms_report=context_report,
+                    legacy_abbreviation_difference_count=len(abbreviation_differences),
+                    message="Turkish heading repair installed. Restart the game to load it; the previous pack remains available for installation.")
+
     def build_translation(self, game_dir, target_lang, provider_config):
         from .codec import L10NDocument
-        from .protection import prepare, validate, has_linguistic_content
-        if not re.fullmatch(r"[A-Za-z]{2,3}(?:[-_][A-Za-z0-9]{2,8})?", target_lang):
-            raise ValueError("Enter a valid provider language code, such as tr, de or pt-BR")
+        from .protection import PROTECTION_PROFILE, prepare, validate, has_linguistic_content
+        from .multilingual import apply_target_context_terms, normalize_language
+        target_lang = normalize_language(target_lang)
+        if target_lang.split('-')[0] == 'en':
+            raise ValueError('English is the original source; use Restore original instead')
         self.emit("Reading original English text", 1)
         doc, manifest = self._extract(game_dir)
         source = doc.table.as_dict()
@@ -352,22 +524,33 @@ class TranslatorService:
             self.data.mkdir(parents=True, exist_ok=True)
             db = sqlite3.connect(self.data / "provider-cache.sqlite")
             try:
-                db.execute("CREATE TABLE IF NOT EXISTS cache (server TEXT, lang TEXT, source TEXT, translated TEXT, PRIMARY KEY(server,lang,source))")
+                # Legacy rows stay intact. A protection revision has a separate
+                # namespace so older, semantically ambiguous output is not reused.
+                db.execute("CREATE TABLE IF NOT EXISTS cache_v2 (profile TEXT, server TEXT, lang TEXT, source TEXT, translated TEXT, PRIMARY KEY(profile,server,lang,source))")
                 unique = list(dict.fromkeys(source.values()))
                 translations = {}
                 for index, text in enumerate(unique):
                     if not has_linguistic_content(text):
                         translations[text] = text
                         continue
-                    row = db.execute("SELECT translated FROM cache WHERE server=? AND lang=? AND source=?", (provider_config["url"], target_lang, text)).fetchone()
+                    row = db.execute("SELECT translated FROM cache_v2 WHERE profile=? AND server=? AND lang=? AND source=?",
+                                     (PROTECTION_PROFILE, provider_config["url"], target_lang, text)).fetchone()
+                    value = None
                     if row:
-                        value = row[0]
-                        validate(text, value)
-                    else:
+                        try:
+                            validate(text, row[0])
+                        except ValueError:
+                            # Keep the old row until a new answer passes every
+                            # check. A failed request must not destroy the cache.
+                            self.emit("Cached result failed current protection checks; translating again")
+                        else:
+                            value = row[0]
+                    if value is None:
                         prepared = prepare(text)
                         value = prepared.restore(provider.translate_batch([prepared.html])[0])
                         validate(text, value)
-                        db.execute("INSERT OR REPLACE INTO cache VALUES (?,?,?,?)", (provider_config["url"], target_lang, text, value))
+                        db.execute("INSERT OR REPLACE INTO cache_v2 VALUES (?,?,?,?,?)",
+                                   (PROTECTION_PROFILE, provider_config["url"], target_lang, text, value))
                         db.commit()
                     translations[text] = value
                     if index % 50 == 0:
@@ -377,27 +560,69 @@ class TranslatorService:
                 db.close()
         for key, value in output.items():
             validate(source[key], value)
+        output, context_report = apply_target_context_terms(source, output, target_lang)
+        canonical_output = dict(output)
+        canonical_names = []
+        if _turkish_language(target_lang):
+            canonical_names = context_report["rule_keys"]["skill_snipe"]
         unchanged = {key: value for key, value in output.items() if value == source[key] and has_linguistic_content(value)}
         stage = self.data / "stages" / target_lang
         if provider_config.get("provider") == "offline-json" and unchanged and not provider_config.get("review_unchanged", False):
             report = stage / "unchanged-review.json"
             json_write(report, unchanged)
             raise ValueError("Unchanged English candidates need review (proper names may be valid). Review " + str(report) + "; then select the reviewed-unchanged option.")
+        display_report = None
+        if _turkish_language(target_lang):
+            if provider_config.get("font_compatible_titles", True):
+                from .display import apply_turkish_heading_compatibility
+                output, display_report = apply_turkish_heading_compatibility(output)
+        for key, value in output.items():
+            validate(source[key], value)
         dat = doc.encode(doc.table.translated(output))
         if L10NDocument.decode(dat, "en-US", manifest).table.as_dict() != output:
             raise ValueError("Encoded translation failed verification")
         atomic(stage / "L10NString.dat", dat)
+        json_write(stage / "entries.translated.json", canonical_output)
         meta = dict(steam_build=BUILD, target_language=target_lang, source_entry_count=len(source),
+                    protection_profile=PROTECTION_PROFILE,
                     dat_sha256=sha(dat), original_pak_sha256=ORIGINAL_SHA, quality_gate_passed=True,
                     remaining_untranslated_candidate_entries=0, machine_translation=provider_config.get("provider") != "offline-json",
                     unchanged_linguistic_entry_count=len(unchanged),
                     unchanged_linguistic_reviewed=bool(provider_config.get("review_unchanged", False)),
                     validation_scope="complete keys, protected literals and codec roundtrip; translation quality needs review",
+                    canonical_skill_name_fixes=canonical_names,
+                    context_terms_report=context_report,
+                    editable_translation_map="entries.translated.json",
+                    font_compatible_titles=bool(display_report),
+                    display_profile=display_report["profile"] if display_report else None,
+                    display_report=display_report,
                     human_reviewed=False, in_game_verified=False)
+        if display_report:
+            json_write(stage / "display-report.json", display_report)
+        else:
+            (stage / "display-report.json").unlink(missing_ok=True)
+        if context_report:
+            json_write(stage / "context-terms-report.json", context_report)
+        else:
+            (stage / "context-terms-report.json").unlink(missing_ok=True)
         json_write(stage / "patch-meta.json", meta)
         self.emit("Complete text package built locally. Use Install prepared language to apply it.", 100)
         return dict(stage=str(stage), target_language=target_lang, entries=len(source), status="prepared",
                     message="Language pack prepared. Review it, then close the game before installing.")
+
+    def export_translation(self, target_language, destination):
+        """Export a private editable map; exporting never installs it."""
+        from .multilingual import normalize_language
+        code = normalize_language(target_language)
+        stage = self.data / 'stages' / code
+        meta = json.loads((stage / 'patch-meta.json').read_text('utf-8'))
+        values = flat_json(stage / 'entries.translated.json')
+        if normalize_language(meta.get('target_language', '')) != code or len(values) != meta.get('source_entry_count'):
+            raise ValueError('Editable translation map does not match the selected pack')
+        output = Path(destination)
+        json_write(output, values)
+        self.emit('Editable translation map exported locally: ' + str(output), 100)
+        return dict(translation_json=str(output), target_language=code, entries=len(values), status='exported')
 
     def export_source(self, game_dir):
         doc, _ = self._extract(game_dir)

@@ -12,8 +12,13 @@ from dataclasses import dataclass
 import html
 from html.parser import HTMLParser
 import re
+import unicodedata
 
 
+PROTECTION_PROFILE = "format-game-abbreviations-and-unicode-numbers-v3"
+GAME_ABBREVIATIONS = ("HP", "MP", "XP", "EXP", "AP", "DP", "PvE", "PvP", "FPS", "DPS", "NPC", "AoE", "DoT", "HoT")
+_GAME_ABBREVIATION = (r"(?<![A-Za-z0-9_])(?:" + "|".join(map(re.escape, GAME_ABBREVIATIONS))
+                      + r")(?![A-Za-z0-9_])")
 _PRINTF = r"%(?:\d+\$)?[-+#0']*(?:\d+|\*(?:\d+\$)?)?(?:\.(?:\d+|\*(?:\d+\$)?))?(?:hh|ll|I64|I32|[hljztL])?[diuoxXfFeEgGaAcCsSpn%]"
 _TAG = re.compile(r'''<(?:[^<>"']|"[^"]*"|'[^']*')*>''')
 _PRINTF_RE = re.compile(_PRINTF)
@@ -23,6 +28,7 @@ _SPECIAL = re.compile(
     + r"|\r\n|[\x00-\x1f\x7f]"
     + r"|&(?:\#[0-9]+|\#x[0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]+);"
     + r"|[+\-\u2212]?(?:\d+(?:[.,:/]\d+)*|\.\d+)(?:[eE][+\-]?\d+)?%?"
+    + "|" + _GAME_ABBREVIATION
 )
 
 
@@ -45,8 +51,10 @@ def protected_parts(text: str):
         if match:
             yield position, match.end(), match.group()
             position = match.end()
-        elif text[position].isnumeric():
-            # Circled numbers and other nondecimal numeric symbols are not \d.
+        elif unicodedata.category(text[position]).startswith("N"):
+            # Preserve Unicode numbers such as ①/Ⅳ/²/½, beyond regex \d.
+            # CJK letters like 参/一 have numeric properties but are ordinary
+            # word characters (category Lo), not formatting/number literals.
             yield position, position + 1, text[position]
             position += 1
         else:
@@ -54,7 +62,7 @@ def protected_parts(text: str):
 
 
 def protected_literals(text: str) -> Counter:
-    """Return the multiset of exact formatting and numeric literals."""
+    """Return exact formatting, numeric, and case-sensitive game abbreviations."""
     return Counter(literal for _, _, literal in protected_parts(text))
 
 
@@ -79,7 +87,7 @@ def validate(source: str, target: str) -> None:
     if source.strip() and not target.strip():
         raise ValueError("The translation is empty.")
     if protected_literals(source) != protected_literals(target):
-        raise ValueError("Protected formatting, macros, controls, or numbers changed.")
+        raise ValueError("Protected formatting, macros, controls, numbers, or game abbreviations changed.")
     for predicate in (lambda literal: bool(_TAG.fullmatch(literal)), _nonpos_printf):
         original = [literal for _, _, literal in protected_parts(source) if predicate(literal)]
         translated = [literal for _, _, literal in protected_parts(target) if predicate(literal)]

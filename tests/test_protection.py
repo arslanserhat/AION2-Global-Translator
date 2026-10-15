@@ -1,7 +1,7 @@
 import html
 import unittest
 
-from aion2_global_translator.protection import has_linguistic_content, prepare, protected_literals, validate
+from aion2_global_translator.protection import GAME_ABBREVIATIONS, has_linguistic_content, prepare, protected_literals, validate
 
 
 class ProtectionTests(unittest.TestCase):
@@ -63,6 +63,79 @@ class ProtectionTests(unittest.TestCase):
             item = prepare(source)
             self.assertEqual(item.restore(item.html), source)
         self.assertEqual(prepare("Hello").restore(html.escape("Merhaba & iyi günler")), "Merhaba & iyi günler")
+
+    def test_game_mechanics_abbreviations_are_hidden_from_the_html_provider(self):
+        source = "Restores 20 HP and 10 MP during PvP combat."
+        item = prepare(source)
+        for abbreviation in ("HP", "MP", "PvP"):
+            self.assertIn(abbreviation, item.placeholders.values())
+            self.assertNotIn(abbreviation, item.html)
+        target = item.restore(item.html.replace("Restores", "Yeniler").replace("and", "ve").replace("during", "sırasında").replace("combat", "savaş"))
+        self.assertIn("20 HP", target)
+        self.assertIn("10 MP", target)
+        self.assertEqual(protected_literals(source), protected_literals(target))
+
+    def test_hp_mp_may_move_with_grammar_but_exact_counts_are_mandatory(self):
+        validate("Restores HP and consumes MP", "MP harcar ve HP yeniler")
+        for target in ("HP harcar ve HP yeniler", "MP harcar ve can yeniler", "Milletvekili ve beygir gücü yeniler"):
+            with self.subTest(target=target), self.assertRaises(ValueError):
+                validate("Restores HP and consumes MP", target)
+        with self.assertRaises(ValueError):
+            validate("HP HP MP", "HP MP MP")
+
+    def test_domain_abbreviations_are_case_sensitive_whole_ascii_words(self):
+        source = "HP hp Hp CHPower MP3 EXPRESSION DPS_counter hpMP NPCs AoE DoT HoT"
+        literals = protected_literals(source)
+        self.assertEqual(literals["HP"], 1)
+        for value in ("MP", "EXP", "DPS", "NPC"):
+            self.assertNotIn(value, literals)
+        self.assertEqual([value for value in ("AoE", "DoT", "HoT") if literals[value] == 1], ["AoE", "DoT", "HoT"])
+        self.assertFalse(has_linguistic_content(" / ".join(GAME_ABBREVIATIONS)))
+        self.assertTrue(has_linguistic_content("Restores HP"))
+
+    def test_macros_and_tag_attributes_contain_no_nested_abbreviation_tokens(self):
+        source = '{effect:{HP:MP}} <accent title="HP MP">PvP</> HP'
+        item = prepare(source)
+        values = list(item.placeholders.values())
+        self.assertIn("{effect:{HP:MP}}", values)
+        self.assertIn('<accent title="HP MP">', values)
+        self.assertEqual(values.count("HP"), 1)
+        self.assertNotIn("MP", values)
+        self.assertEqual(item.restore(item.html), source)
+
+    def test_turkish_expansion_cannot_silently_replace_the_stat_abbreviation(self):
+        with self.assertRaises(ValueError):
+            validate("Restores HP", "Can yeniler")
+        validate("Restores HP", "HP yeniler")
+
+    def test_cjk_words_with_numeric_properties_remain_translatable(self):
+        self.assertEqual(prepare("Join").restore("参加"), "参加")
+        validate("Join", "参加")
+        reference = prepare("参照")
+        self.assertEqual(reference.html, "参照")
+        self.assertEqual(reference.restore("Reference"), "Reference")
+        self.assertFalse(protected_literals("一緒に参加"))
+        self.assertTrue(has_linguistic_content("一"))
+
+    def test_unicode_number_symbols_ascii_and_arabic_digits_stay_strict(self):
+        source = "Stage ① Ⅳ x² ½ 12 ١٢"
+        item = prepare(source)
+        target = item.restore(item.html.replace("Stage", "Aşama"))
+        self.assertEqual(target, "Aşama ① Ⅳ x² ½ 12 ١٢")
+        for before, after in [("①", "1"), ("Ⅳ", "IV"), ("²", "2"), ("½", ".5"),
+                              ("12", "13"), ("١٢", "12")]:
+            with self.subTest(number=before), self.assertRaises(ValueError):
+                validate(source, target.replace(before, after))
+
+    def test_cjk_macro_names_and_tag_attributes_still_remain_exact_literals(self):
+        source = '<accent title="参一">Reference {参:一} %s</>'
+        item = prepare(source)
+        target = item.restore(item.html.replace("Reference", "参照"))
+        self.assertEqual(target, '<accent title="参一">参照 {参:一} %s</>')
+        self.assertIn('<accent title="参一">', item.placeholders.values())
+        self.assertIn("{参:一}", item.placeholders.values())
+        with self.assertRaises(ValueError):
+            validate(source, target.replace("{参:一}", "{ref:one}"))
 
 
 if __name__ == "__main__":

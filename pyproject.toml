@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aion2-global-translator"
-version = "0.1.0"
+version = "0.1.1"
 description = "Community native text localization toolkit for AION 2 Steam"
 readme = "README.md"
 requires-python = ">=3.12"

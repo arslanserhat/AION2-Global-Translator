@@ -33,13 +33,13 @@ Keep provider access explicit and configurable. Do not add embedded public front
 
 ## Tests
 
-The v0.1.0 development check passed **34 synthetic tests locally**. Run them from a source installation with:
+The v0.1.1 source check passed **96 tests locally**. The suite uses synthetic fixtures and mocked services. Run it from a source installation with:
 
 ```powershell
 python -m unittest discover -s tests -v
 ```
 
-These tests use synthetic data and mocked services; they do not establish in-game visual compatibility. The packaged Windows GUI was also opened successfully. [docs/check-workflow.yml](docs/check-workflow.yml) provides an optional GitHub Actions workflow example; the test badge reports the local result rather than an active CI run.
+The tests do not establish in-game visual compatibility. The Windows GUI was also opened; Turkish/English layout and busy-state controls were checked separately. [docs/check-workflow.yml](docs/check-workflow.yml) provides an optional GitHub Actions workflow example; the test badge reports the local result rather than an active CI run.
 
 ## Language contributions
 

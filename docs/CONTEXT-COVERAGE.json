@@ -1,0 +1,25 @@
+{
+  "scope": "Proposed short button/action labels and four context-qualified game labels only.",
+  "language_codes": ["de", "fr", "es", "it", "pt", "ru", "ja", "ko", "zh", "ar"],
+  "actions_per_language": 35,
+  "game_terms_per_language": 4,
+  "total_translated_label_values": 390,
+  "selection_constraints": {
+    "actions": "Exact English action labels in verified interaction/button fields; never replace matching words inside prose or noun-only titles.",
+    "Staff": "Verified weapon label fields only; not employees or NPC occupations.",
+    "Snipe": "Exact Snipe skill-name fields only; not the bird in prose.",
+    "Cast duration": "Verified casting-time stat label only.",
+    "Bound": "Item binding flag only; not book binding or an English verb."
+  },
+  "style": "Uses common local interface conventions. Russian predominantly uses infinitives; Japanese and Korean use short interface labels. A Turkish imperative style is not imposed globally.",
+  "locale_limitations": {
+    "zh": "Simplified Chinese only. Do not apply to zh-TW, zh-HK or any Traditional Chinese locale.",
+    "pt": "General Portuguese labels; not a reviewed regional Portuguese localization.",
+    "ar": "Labels are Unicode Arabic. Right-to-left layout, shaping and game-font support require separate in-game verification."
+  },
+  "native_speaker_reviewed": false,
+  "official_game_terminology_verified": false,
+  "full_corpus_semantically_reviewed": false,
+  "in_game_verified": false,
+  "disclaimer": "This lexicon improves these explicit labels only. It does not establish translation quality for generated sentences, mechanics, quests, subtitles or an entire language pack."
+}
