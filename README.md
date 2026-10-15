@@ -7,7 +7,7 @@
   <img alt="Status: Experimental" src="https://img.shields.io/badge/status-experimental-c58b29?style=flat-square">
   <img alt="Method: Native text files" src="https://img.shields.io/badge/method-native_text_files-237e79?style=flat-square">
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-5965ac?style=flat-square"></a>
-  <a href="CONTRIBUTING.md"><img alt="Tests" src="https://img.shields.io/badge/tests-34_passed-2ea44f?style=flat-square"></a>
+  <a href="CONTRIBUTING.md#tests"><img alt="Tests: 34 passed locally" src="https://img.shields.io/badge/tests-34_passed-2ea44f?style=flat-square"></a>
   <a href="https://github.com/arslanserhat/AION2-Global-Translator/releases/latest"><img alt="Download Windows ZIP" src="https://img.shields.io/badge/download-Windows_ZIP-257e65?style=flat-square"></a>
 </p>
 
@@ -39,14 +39,14 @@ The game reads the generated text file directly. This workflow does not depend o
 
 **Experimental.** The codec has been checked against Windows Steam build **25926599**, whose English text table contains **153,042 entries**. Byte-preserving source round trips and edited Unicode encode/decode checks passed during development. That verifies serialization; it does not establish complete in-game compatibility.
 
-A **153,042-entry Turkish candidate** has been generated locally: **137,812 entries differ from English**, and **27 entries have human corrections**. Its structure checks and native encode/decode round trip passed. Complete table coverage does not mean every value changed or every sentence was reviewed; unchanged language-bearing values still need semantic review.
+A **153,042-entry Turkish patch has been generated and installed locally**, with the original files backed up. **138,615 entries differ from English**, and **1,022 keys received human corrections**. Structure validation and the native encode/decode round trip passed. The remaining 4,114 unchanged language-bearing entries are mostly proper names, server names, technical development records, and utterances; long untranslated quest and achievement text identified during review was corrected. This is machine translation with selected human corrections, not a fully human-reviewed localization.
 
-A small Turkish pilot was installed locally, and the player reported that the game opened without crashing. The full candidate's rendered text has not been independently verified. The game-derived table is not included in the public download.
+The full patch is installed and requires the next game restart to load. Its rendered text has not been independently verified in-game. The game-derived table is not included in the public download. The packaged Windows application opened successfully, and [34 synthetic tests passed locally](CONTRIBUTING.md#tests).
 
 | Area | Status |
 | --- | --- |
 | Windows Steam build 25926599 / English source | Codec verified; native installation experimental |
-| Turkish | Full local candidate generated; human review and in-game checks remain |
+| Turkish | Full local patch installed and checked on disk; rendered text unverified |
 | Other target languages | Depend on the configured provider, language pair, and font/rendering checks |
 | Other game builds, regions, or launchers | Unverified |
 | Voice, image text, and live chat | Outside this text-patch workflow |

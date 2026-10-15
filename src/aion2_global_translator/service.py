@@ -189,7 +189,10 @@ class TranslatorService:
             raise RuntimeError("Close AION 2 before installing or restoring; restart it afterwards")
 
     def install_turkish(self, game_dir):
-        return self.install_stage(game_dir, self.data / "stages/tr")
+        stage = self.data / "stages/tr"
+        if not (stage / "patch-meta.json").is_file():
+            raise ValueError("No local Turkish pack is ready. Use Build Translation to generate one from your game or import a complete translation map first.")
+        return self.install_stage(game_dir, stage)
 
     def install_stage(self, game_dir, stage):
         self._closed()

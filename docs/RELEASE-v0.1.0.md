@@ -22,9 +22,11 @@ Offline maps that retain language-bearing English values produce an `unchanged-r
 
 ## Verification and limits
 
-The supported source passed byte-preserving serialization and edited Unicode round trips. A small Turkish pilot was installed locally, and the player reported that the game launched without a crash. Rendered text has not been independently verified, and a full playthrough has not been completed.
+The supported source passed byte-preserving serialization and edited Unicode round trips. The packaged Windows GUI opened successfully, and **34 synthetic tests passed locally**. These checks do not replace testing the game's rendered text or a full playthrough.
 
-A full **153,042-entry Turkish candidate** was generated locally and passed structure checks and a native encode/decode round trip. **137,812 entries differ from English**, with **27 human-corrected entries**. Unchanged language-bearing values remain subject to semantic review; complete key coverage is not a claim that every value was translated or fully reviewed. The full candidate has not been visually verified in-game and its game-derived table is not distributed in this release.
+A complete **153,042-entry Turkish patch was generated and installed locally**, with the original backup preserved. Structure validation and the native encode/decode round trip passed. **138,615 entries differ from English**, and **1,022 keys received human corrections**. The remaining 4,114 unchanged language-bearing entries are mostly proper names, server names, technical development records, and utterances; long English quest and achievement text identified during final review was corrected. This remains machine translation with selected corrections, not a fully human-reviewed localization.
+
+The installed full patch loads on the next game restart; its in-game rendering has not been independently verified. Its game-derived table is not distributed in this release.
 
 Target-language availability depends on the chosen provider's English-to-target pair and the game's font, layout, and rendering behavior. This release does not claim support for every language.
 

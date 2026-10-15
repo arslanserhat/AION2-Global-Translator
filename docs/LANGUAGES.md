@@ -7,11 +7,13 @@ Language availability has three separate parts: the source format the app can re
 | Component | Current evidence | What remains unverified |
 | --- | --- | --- |
 | English source, Steam build 25926599 | A 153,042-entry table was decoded and reconstructed; edited Unicode text round-tripped | Every game screen and future updates |
-| Turkish text | A full 153,042-entry local candidate passed structure and encode/decode checks; 137,812 entries differ from English and 27 have human corrections. A smaller installed pilot launched without a player-reported crash | Review of unchanged language-bearing text, independent visual confirmation of the full candidate, terminology, and full playthrough |
+| Turkish text | The complete 153,042-entry patch was installed locally with original backups preserved; structure and encode/decode checks passed. 138,615 entries differ from English and 1,022 keys have human corrections | Rendered text after restarting the game, broad terminology review, and full playthrough |
 | Other target languages | Available only when offered by the configured provider for the English source | Native rendering, typography, layout, and game-specific translation quality |
 | Other source locales or clients | No compatibility claim | Their table format, keys, file layout, and loader behavior |
 
 The project's name describes its aim. It is not a statement that every language, server region, or game build is supported.
+
+The Turkish work combines machine translation and selected human corrections. Its 4,114 unchanged language-bearing entries are mostly proper names, server names, technical development records, and utterances. Long English quest and achievement text identified during the final review was corrected. Complete table coverage does not imply a full human review or verified in-game appearance.
 
 ## Provider language discovery
 

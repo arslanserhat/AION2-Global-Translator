@@ -31,6 +31,16 @@ Use synthetic strings and temporary fixture directories in tests. For a formatti
 
 Keep provider access explicit and configurable. Do not add embedded public frontend keys, borrowed credentials, subscription bypasses, or silent external uploads.
 
+## Tests
+
+The v0.1.0 development check passed **34 synthetic tests locally**. Run them from a source installation with:
+
+```powershell
+python -m unittest discover -s tests -v
+```
+
+These tests use synthetic data and mocked services; they do not establish in-game visual compatibility. The packaged Windows GUI was also opened successfully. [docs/check-workflow.yml](docs/check-workflow.yml) provides an optional GitHub Actions workflow example; the test badge reports the local result rather than an active CI run.
+
 ## Language contributions
 
 Report the provider and target code separately from font and in-game verification. Review terminology in context; identical English words can require different translations across screens. Passwords, riddles, and letter puzzles need human review.

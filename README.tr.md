@@ -30,14 +30,14 @@ Oyun, hazırlanan metin dosyasını doğrudan okur. Bu yöntem ekran görüntüs
 
 **Deneysel.** Kodlayıcı, Windows Steam **25926599** sürümünün **153.042 kayıt** içeren İngilizce metin tablosuyla doğrulandı. Kaynağı bayt düzeyinde koruyan yeniden yazım ve değiştirilmiş Unicode metnin kodlanıp geri okunması testleri geçti. Bunlar dosya biçimini doğrular; bütün oyunun sorunsuz çalıştığını kanıtlamaz.
 
-**153.042 kayıtlı Türkçe aday paket** yerel olarak üretildi: **137.812 kayıt İngilizce kaynaktan farklı**, **27 kayıtta insan düzeltmesi** var. Biçim denetimleri ve yerel dosyanın kodlanıp geri okunması testi geçti. Bütün kayıtların pakette bulunması, her değerin değiştiğini veya her cümlenin incelendiğini göstermez; aynı kalan dilsel metinlerin anlam bakımından incelenmesi sürüyor.
+**153.042 kayıtlı Türkçe yama üretildi ve yerel olarak kuruldu**; orijinal dosyaların yedeği korundu. **138.615 kayıt İngilizce kaynaktan farklı**, **1.022 anahtarda insan düzeltmesi** var. Biçim denetimleri ve yerel dosyanın kodlanıp geri okunması testi geçti. Aynı kalan 4.114 dilsel kayıt çoğunlukla özel adlar, sunucu adları, teknik geliştirme kayıtları ve ünlemlerden oluşuyor; incelemede bulunan uzun İngilizce görev ve başarım metinleri düzeltildi. Çalışma, seçilmiş insan düzeltmeleri içeren makine çevirisidir; bütünü insan tarafından gözden geçirilmiş bir yerelleştirme değildir.
 
-Küçük bir Türkçe deneme paketi yerel olarak kuruldu; oyuncu oyunun çökmeden açıldığını bildirdi. Tam aday paketin ekranda nasıl göründüğü bağımsız olarak doğrulanmadı. Oyuna ait tam tablo, herkese açık indirmeye eklenmiyor.
+Tam yama kurulu; yüklenmesi için oyunun sonraki açılışı gerekiyor. Oyun içindeki görünümü bağımsız olarak doğrulanmadı. Oyuna ait tam tablo, herkese açık indirmeye eklenmiyor. Paketlenmiş Windows uygulaması başarıyla açıldı ve [34 yapay veri testi yerel olarak geçti](CONTRIBUTING.md#tests).
 
 | Alan | Durum |
 | --- | --- |
 | Windows Steam 25926599 / İngilizce kaynak | Kodlayıcı doğrulandı; oyuna kurulum deneysel |
-| Türkçe | Tam yerel aday üretildi; insan incelemesi ve oyun içi denetimler sürüyor |
+| Türkçe | Tam yerel yama kuruldu, diskte doğrulandı; oyun içi görünüm doğrulanmadı |
 | Diğer hedef diller | Sağlayıcının dil çiftine ve oyun içi yazı tipi denetimine bağlı |
 | Diğer sürümler, bölgeler ve başlatıcılar | Doğrulanmadı |
 | Ses, görseldeki yazı ve canlı sohbet | Bu metin yamasının kapsamı dışında |
