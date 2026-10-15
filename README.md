@@ -7,7 +7,7 @@
   <img alt="Status: Experimental" src="https://img.shields.io/badge/status-experimental-c58b29?style=flat-square">
   <img alt="Method: Native text files" src="https://img.shields.io/badge/method-native_text_files-237e79?style=flat-square">
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-5965ac?style=flat-square"></a>
-  <a href="CONTRIBUTING.md#tests"><img alt="Tests: 96 passed locally" src="https://img.shields.io/badge/tests-96_passed-2ea44f?style=flat-square"></a>
+  <a href="CONTRIBUTING.md#tests"><img alt="Tests: 108 passed locally" src="https://img.shields.io/badge/tests-108_passed-2ea44f?style=flat-square"></a>
   <a href="https://github.com/arslanserhat/AION2-Global-Translator/releases/latest"><img alt="Download Windows ZIP" src="https://img.shields.io/badge/download-Windows_ZIP-257e65?style=flat-square"></a>
 </p>
 

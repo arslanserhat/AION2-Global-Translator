@@ -77,6 +77,8 @@ For a wording correction in any language, change only the affected values in a c
 
 Each successful build retains the editable canonical map at `private-data/stages/<target>/entries.translated.json`, before any Turkish title-character folding. Use **Details… → Export translation…** for the selected target to save a working copy, then edit that copy and use the offline import. The service equivalent is `export_translation(target_language, destination)`. These complete game-derived maps remain private and are excluded from the public ZIP.
 
+An older Turkish pack may contain localized abbreviation labels such as `Can` for `HP`. During an offline Turkish rebuild, an untouched cell can be carried forward only from an existing same-language pack whose build, source identity, DAT hash, complete keys, and native round trip are verified. Its full text must match that reference, allowing only the established Turkish title-display equivalence; original tags, numbers, macros, and controls remain protected. This compatibility path does not approve the cell's meaning. New or edited cells must retain the current strict abbreviation literals, and provider results always use strict validation. The stage metadata records `carry_forward_legacy_count`, `carry_forward_legacy_keys`, and the reference hashes in `carry_forward_legacy_reference`.
+
 Unchanged language-bearing values are written to `private-data/stages/<target>/unchanged-review.json` and block stage creation until you explicitly confirm their review in the GUI (`review_unchanged=True` in a service call). Confirm only deliberate unchanged values such as proper names; the review does not prove complete translation coverage or semantic accuracy.
 
 ## Turkish title compatibility

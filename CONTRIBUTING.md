@@ -33,7 +33,7 @@ Keep provider access explicit and configurable. Do not add embedded public front
 
 ## Tests
 
-The v0.1.1 source check passed **96 tests locally**. The suite uses synthetic fixtures and mocked services. Run it from a source installation with:
+The v0.1.1 source check passed **108 tests locally**. The suite uses synthetic fixtures and mocked services. Run it from a source installation with:
 
 ```powershell
 python -m unittest discover -s tests -v

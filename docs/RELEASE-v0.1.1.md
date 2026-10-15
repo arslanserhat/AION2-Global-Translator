@@ -43,7 +43,9 @@ For an existing compatible Turkish installation, select Turkish, close AION 2, r
 
 ## Verification and scope
 
-The supported client remains **Windows Steam build 25926599**. The public source passed **96 tests locally**. The compact Windows GUI's Turkish/English layout and busy-state controls were checked separately. The final local Turkish patch was installed: all **153,042 entries**, the **18,712-key** consolidated correction set, full decoded values, native round trip, and zero unresolved formatting failures were checked. Key/format validation, installation checks, selected semantic review, and in-game appearance remain separate evidence.
+The supported client remains **Windows Steam build 25926599**. The public source passed **108 tests locally**. The compact Windows GUI's Turkish/English layout and busy-state controls were checked separately. The final local Turkish patch was installed: all **153,042 entries**, the **18,712-key** consolidated correction set, full decoded values, native round trip, and zero unresolved formatting failures were checked. Key/format validation, installation checks, selected semantic review, and in-game appearance remain separate evidence.
+
+A full local export/edit/rebuild probe preserved all 153,042 keys and their order, one controlled NPC-text edit, and 601 untouched legacy cells, with an exact expected decoded map; the live game DAT and original local bundle hashes remained unchanged. Legacy carry-forward requires a verified reference and does not approve meaning; new or changed cells retain strict abbreviation checks.
 
 A full playthrough and complete human proofreading are not claimed. Other targets have the shared validation and, for the ten listed targets, a short-label context profile. They have not received the Turkish corpus-level semantic review. Online generation depends on the provider's English-to-target pair; usability also depends on the game's fonts/rendering.
 

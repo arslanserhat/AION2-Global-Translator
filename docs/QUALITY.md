@@ -34,7 +34,7 @@ The UI pass used an **82-entry stat glossary** and **52-entry action glossary**,
 | Weapon `Staff` | `Asa`; staff meaning employees is kept separate |
 | Ability `Cast` / `Casting` | Ability use/preparation, according to the field; not metal casting |
 | Ability `caster` | The ability's user; not automatically the Sorcerer class, a wheel, or a foundry worker |
-| `MP` | The mana resource; its abbreviation, values, and protected variables are preserved |
+| `MP` | The mana resource; values and variables stay protected, and new or edited output retains the literal abbreviation |
 | Dungeon or challenge `Clear` | Complete the activity; not “transparent,” “explain,” or an arbitrary cleaning instruction |
 | Completion-reward objective | Receive the rewards: `Tamamlama ödüllerini al` |
 | Clearing creatures or an area | A suitable clearing/removal verb can remain; `Clear` is not replaced globally |
@@ -56,6 +56,10 @@ Gameforge's [Basic Classes Information](https://forum.aion.gameforge.com/forum/t
 The native workflow checks the complete key set and entry order, protected placeholders, literal tags and their order, numeric/control structure, and encode/decode agreement. Source round trips, installation hashes, and backups provide separate file-integrity evidence. Passing these checks establishes those properties; it does not establish that every sentence accurately describes the game's mechanics or story.
 
 Technical game abbreviations, including **HP** and **MP**, are protected before provider translation and checked afterwards. Provider caching uses a revised protection profile; legacy rows are retained but are not reused as results for that new profile. Cached answers must pass current validation. This prevents a protection upgrade from silently inheriting incompatible old cached text; it does not certify the meaning of every valid provider answer.
+
+An export/edit/rebuild check also found older Turkish cells with translated abbreviation labels, despite intact tags, macros, and numbers. Offline imports may retain those untouched cells only against a verified same-language reference pack: build/source identity, DAT hash, complete keys, codec round trip, and full text/reference equivalence are checked. The known Turkish title-display profile can establish equivalent canonical/display text. Carried cells and reference hashes are recorded in stage metadata; this is continuity evidence, not semantic approval. A changed cell or a new provider answer must pass current strict abbreviation protection. See [the import contract](TRANSLATION.md#custom-maps).
+
+A full local export/edit/rebuild probe checked all 153,042 keys and their order, retained one controlled NPC-text edit and 601 unchanged legacy cells, and reproduced the expected decoded map; the live game DAT and original local bundle hashes remained unchanged.
 
 Turkish font compatibility is another separate concern. Local font character maps explain why accented body text can work while a heading lacks glyphs. The optional title compatibility profile uses ASCII spellings in selected names/titles while preserving body accents and the source maps. See [language compatibility](LANGUAGES.md#turkish-heading-compatibility-in-v011) and [translation workflow](TRANSLATION.md#turkish-title-compatibility). No game font assets are distributed.
 

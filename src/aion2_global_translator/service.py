@@ -499,6 +499,35 @@ class TranslatorService:
                     legacy_abbreviation_difference_count=len(abbreviation_differences),
                     message="Turkish heading repair installed. Restart the game to load it; the previous pack remains available for installation.")
 
+    def _verified_legacy_reference(self, stage, target_lang, source_doc, manifest):
+        """Read the existing same-language DAT as a bounded migration reference."""
+        from .codec import L10NDocument
+        from .multilingual import normalize_language
+        try:
+            meta_bytes = (stage / "patch-meta.json").read_bytes()
+            meta = json.loads(meta_bytes.decode("utf-8"))
+            data = (stage / "L10NString.dat").read_bytes()
+            source = source_doc.table.as_dict()
+            if (not isinstance(meta, dict) or meta.get("steam_build") != BUILD
+                    or meta.get("original_pak_sha256") != ORIGINAL_SHA
+                    or normalize_language(meta.get("target_language", "")) != target_lang
+                    or meta.get("source_entry_count") != len(source)
+                    or meta.get("quality_gate_passed") is not True
+                    or meta.get("remaining_untranslated_candidate_entries") != 0
+                    or meta.get("dat_sha256") != sha(data)):
+                raise ValueError("Legacy reference pack metadata or checksum is invalid")
+            decoded = L10NDocument.decode(data, "en-US", manifest)
+            values = decoded.table.as_dict()
+            if (len(decoded.table.entries) != len(source) or set(values) != set(source)
+                    or decoded.table.namespace.text != source_doc.table.namespace.text
+                    or [k.text for k, _ in decoded.table.entries] != [k.text for k, _ in source_doc.table.entries]
+                    or decoded.encode() != data):
+                raise ValueError("Legacy reference pack key set, namespace or codec verification failed")
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise ValueError("Unchanged legacy Turkish cells require an existing verified same-language pack") from error
+        return dict(stage=stage, values=values, dat=data, meta_bytes=meta_bytes,
+                    dat_sha256=sha(data), meta_sha256=sha(meta_bytes))
+
     def build_translation(self, game_dir, target_lang, provider_config):
         from .codec import L10NDocument
         from .protection import PROTECTION_PROFILE, prepare, validate, has_linguistic_content
@@ -509,6 +538,40 @@ class TranslatorService:
         self.emit("Reading original English text", 1)
         doc, manifest = self._extract(game_dir)
         source = doc.table.as_dict()
+        stage = self.data / "stages" / target_lang
+        offline_turkish = provider_config.get("provider") == "offline-json" and _turkish_language(target_lang)
+        reference = None
+        carried_values = {}
+
+        def matches_reference(key, value):
+            if value == reference["values"][key]:
+                return True
+            from .display import apply_turkish_heading_compatibility
+            displayed, _ = apply_turkish_heading_compatibility({key: value})
+            return displayed[key] == reference["values"][key]
+
+        def validate_translation_cell(key, value, *, initial=False):
+            nonlocal reference
+            if key in carried_values:
+                # Context/display processing cannot use an inherited exception
+                # to introduce new identifiers, text or formatting changes.
+                _legacy_structure_and_abbreviations(source[key], value)
+                validate(carried_values[key], value)
+                if not matches_reference(key, value):
+                    raise ValueError("Legacy cell changed after validation: " + key)
+                return
+            try:
+                validate(source[key], value)
+            except ValueError:
+                if not initial or not offline_turkish:
+                    raise
+                if reference is None:
+                    reference = self._verified_legacy_reference(stage, target_lang, doc, manifest)
+                _legacy_structure_and_abbreviations(source[key], value)
+                if not matches_reference(key, value):
+                    raise ValueError("Changed legacy cell must pass current strict validation: " + key)
+                carried_values[key] = value
+
         output = {}
         if provider_config.get("provider") == "offline-json":
             output = flat_json(provider_config["json_path"])
@@ -559,28 +622,31 @@ class TranslatorService:
             finally:
                 db.close()
         for key, value in output.items():
-            validate(source[key], value)
+            validate_translation_cell(key, value, initial=True)
         output, context_report = apply_target_context_terms(source, output, target_lang)
         canonical_output = dict(output)
         canonical_names = []
         if _turkish_language(target_lang):
             canonical_names = context_report["rule_keys"]["skill_snipe"]
         unchanged = {key: value for key, value in output.items() if value == source[key] and has_linguistic_content(value)}
-        stage = self.data / "stages" / target_lang
-        if provider_config.get("provider") == "offline-json" and unchanged and not provider_config.get("review_unchanged", False):
-            report = stage / "unchanged-review.json"
-            json_write(report, unchanged)
-            raise ValueError("Unchanged English candidates need review (proper names may be valid). Review " + str(report) + "; then select the reviewed-unchanged option.")
         display_report = None
         if _turkish_language(target_lang):
             if provider_config.get("font_compatible_titles", True):
                 from .display import apply_turkish_heading_compatibility
                 output, display_report = apply_turkish_heading_compatibility(output)
         for key, value in output.items():
-            validate(source[key], value)
+            validate_translation_cell(key, value)
         dat = doc.encode(doc.table.translated(output))
         if L10NDocument.decode(dat, "en-US", manifest).table.as_dict() != output:
             raise ValueError("Encoded translation failed verification")
+        if reference is not None:
+            if ((stage / "patch-meta.json").read_bytes() != reference["meta_bytes"]
+                    or (stage / "L10NString.dat").read_bytes() != reference["dat"]):
+                raise ValueError("Legacy reference pack changed while rebuilding; nothing was written")
+        if provider_config.get("provider") == "offline-json" and unchanged and not provider_config.get("review_unchanged", False):
+            report = stage / "unchanged-review.json"
+            json_write(report, unchanged)
+            raise ValueError("Unchanged English candidates need review (proper names may be valid). Review " + str(report) + "; then select the reviewed-unchanged option.")
         atomic(stage / "L10NString.dat", dat)
         json_write(stage / "entries.translated.json", canonical_output)
         meta = dict(steam_build=BUILD, target_language=target_lang, source_entry_count=len(source),
@@ -589,7 +655,13 @@ class TranslatorService:
                     remaining_untranslated_candidate_entries=0, machine_translation=provider_config.get("provider") != "offline-json",
                     unchanged_linguistic_entry_count=len(unchanged),
                     unchanged_linguistic_reviewed=bool(provider_config.get("review_unchanged", False)),
-                    validation_scope="complete keys, protected literals and codec roundtrip; translation quality needs review",
+                    validation_scope=("complete keys, strict protected literals for new/changed cells; "
+                        + ("unchanged verified legacy Turkish cells retain original structural literals and exact reference/display equivalence; " if carried_values else "")
+                        + "codec roundtrip; not a full semantic review"),
+                    carry_forward_legacy_keys=sorted(carried_values),
+                    carry_forward_legacy_count=len(carried_values),
+                    carry_forward_legacy_reference=({"dat_sha256": reference["dat_sha256"],
+                        "meta_sha256": reference["meta_sha256"], "target_language": target_lang} if reference else None),
                     canonical_skill_name_fixes=canonical_names,
                     context_terms_report=context_report,
                     editable_translation_map="entries.translated.json",
