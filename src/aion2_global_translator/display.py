@@ -12,8 +12,8 @@ from collections import Counter
 from .protection import protected_parts, validate
 
 
-PROFILE = "turkish-heading-font-safe-v1"
-_TURKISH_TO_LATIN = str.maketrans("çÇğĞıİöÖşŞüÜ", "cCgGiIoOsSuU")
+PROFILE = "turkish-heading-font-safe-v2"
+_TURKISH_TO_LATIN = str.maketrans("çÇğĞıİöÖşŞüÜâÂ", "cCgGiIoOsSuUaA")
 _BODY_TOKENS = ("DESC", "DESCRIPTION", "EFFECT", "SUMMARY", "TOOLTIP", "STEP", "TEXT", "BODY")
 
 

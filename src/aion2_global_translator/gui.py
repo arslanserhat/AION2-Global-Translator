@@ -5,6 +5,7 @@ import argparse
 import json
 from pathlib import Path
 import queue
+import re
 import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -114,6 +115,23 @@ TEXT = {
         "original": "Original files", "restart_hint": "Text already cached by the game may remain until your next normal game restart.",
     },
 }
+
+
+def localized_service_error(message, language):
+    message = str(message)
+    if "[WinError 5]" in message:
+        return (("Windows oyun dosyasına yazmayı engelledi; kurulum tamamlanmadı. "
+                 "Oyunu kapat, uygulama klasöründeki AION2-Global-Translator-Admin.exe ile yeniden açıp tekrar dene.")
+                if language == "tr" else "Windows denied access to a game file. Close the game, open AION2-Global-Translator-Admin.exe from the extracted application folder, and retry.")
+    match = re.search(r"^(Unsupported Steam build|Language pack build mismatch)\. Found ([^;]+); expected (\d+)\.", message)
+    if not match or language != "tr":
+        return message
+    kind, found, expected = match.groups()
+    if kind == "Unsupported Steam build":
+        return (f"Oyunun Steam sürümü {found}; bu uygulama {expected} için doğrulandı. "
+                "Güncel uygulamayı kullanıp oyun sürümüne uygun yeni dil paketi oluştur. Hiçbir oyun dosyası değiştirilmedi.")
+    return (f"Hazır dil paketi {found} sürümüne ait; güncel oyun {expected}. "
+            "Eski paketi yeniden kurmak yerine güncel kaynaklardan yeniden oluşturmak gerekiyor. Hiçbir oyun dosyası değiştirilmedi.")
 
 
 class TranslatorApp:
@@ -400,7 +418,7 @@ class TranslatorApp:
                 self._result(item[1], item[2])
             elif kind == "error":
                 self._status_key = "failed"
-                error = self._redact(item[2]) or self.tr("failed")
+                error = localized_service_error(self._redact(item[2]), self.language) or self.tr("failed")
                 self._log(error, "error")
                 if not item[3]:
                     messagebox.showerror(self.tr("error_title"), error, parent=self.root)

@@ -21,6 +21,12 @@
 
 # AION 2 Global Translator
 
+**v0.1.2 — Current verified Steam build: 26077854 / 153,185 text records.** Packs must be rebuilt for the 143 added and 227 changed source records. Old 25926599 packs are not force-installed. Verified leftovers from the previous installation are archived while current original files are preserved. [Release notes](docs/RELEASE-v0.1.2.md).
+
+If Windows denies permission to modify game files, use the optional **AION2-Global-Translator-Admin.exe** and manually approve Windows elevation. The ordinary **AION2-Global-Translator.exe** stays unelevated. The public ZIP excludes full game tables and private locally prepared translations.
+
+The initial-release review below documents historical coverage; current source compatibility is the build above.
+
 A free, open-source Windows application for building and managing **native AION 2 text translations** from your own game installation. Choose a translation provider, create a local language patch, and install it with a verified backup and a restore path.
 
 Target-language availability depends on your provider and the game's fonts. The project does **not** claim that every language is supported.

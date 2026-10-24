@@ -19,7 +19,7 @@ class Transactions(unittest.TestCase):
         exe = self.game / "Aion2/Binaries/Win64/AION2.exe"
         exe.parent.mkdir(parents=True)
         exe.write_bytes(b"synthetic executable")
-        (root / "steamapps/appmanifest_3393110.acf").write_text('"buildid" "25926599"')
+        (root / "steamapps/appmanifest_3393110.acf").write_text('"buildid" "26077854"')
         self.pakdir = self.game / "Aion2/Content/Paks/L10N/Text/en-US"
         self.pakdir.mkdir(parents=True)
         self.original = {}
@@ -36,7 +36,7 @@ class Transactions(unittest.TestCase):
         (self.stage / "L10NString.dat").write_bytes(b"synthetic translated DAT")
         self.meta = dict(steam_build=s.BUILD, original_pak_sha256=s.ORIGINAL_SHA,
                          quality_gate_passed=True, remaining_untranslated_candidate_entries=0,
-                         source_entry_count=153042, dat_sha256=s.sha(b"synthetic translated DAT"), target_language="tr")
+                         source_entry_count=s.DISPLAY_ENTRY_COUNT, dat_sha256=s.sha(b"synthetic translated DAT"), target_language="tr")
         self.write_meta()
 
     def write_meta(self):

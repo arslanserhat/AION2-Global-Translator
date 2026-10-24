@@ -5,6 +5,12 @@ from aion2_global_translator.protection import protected_literals
 
 
 class TurkishHeadingDisplayTests(unittest.TestCase):
+    def test_circumflex_missing_from_heading_fonts_is_folded_only_in_selected_visible_text(self):
+        entries = {"SkillString_SAMPLE_skill_name": "Rüzgâr Âlemi", "NpcTalk_SAMPLE_cv_text": "Rüzgâr âlemi"}
+        result, _ = apply_turkish_heading_compatibility(entries)
+        self.assertEqual(result["SkillString_SAMPLE_skill_name"], "Ruzgar Alemi")
+        self.assertEqual(result["NpcTalk_SAMPLE_cv_text"], entries["NpcTalk_SAMPLE_cv_text"])
+
     def test_selected_headings_change_while_bodies_keep_turkish_letters(self):
         entries = {
             "SkillString_EXAMPLE_skill_name": "Keskin Atış",

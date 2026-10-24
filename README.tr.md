@@ -12,6 +12,12 @@
 
 # AION 2 Global Translator
 
+**v0.1.2 — Güncel Steam sürümü: 26077854 / 153.185 metin kaydı.** Oyun güncellemesiyle gelen 143 yeni ve 227 değişmiş kaynak kaydı için paket yeniden oluşturulmalıdır. Eski 25926599 paketini yeni oyuna zorla kurmaz. Doğrulanmış eski yama kalıntılarını özel yedeğe ayırarak güncel dosyaları korur. [Sürüm notları](docs/RELEASE-v0.1.2.md).
+
+Windows oyun dosyasına yazmayı engellerse ZIP içindeki **AION2-Global-Translator-Admin.exe** uygulamasını açın; Windows yönetici onayını kendiniz verin. Normal uygulama **AION2-Global-Translator.exe** adıyla bulunur. Tam oyun tablosu ve yerel Türkçe paket herkese açık ZIP'e dahil değildir.
+
+Aşağıdaki ilk sürüm incelemeleri tarihsel kapsamı açıklar; güncel kaynak uyumluluğu yukarıdaki sürüm içindir.
+
 Kendi oyun kurulumunuzdan **AION 2'nin yerel metin dosyalarını çevirmek ve yönetmek** için geliştirilen ücretsiz, açık kaynaklı bir Windows uygulaması. Çeviri sağlayıcınızı seçin, yerel bir dil paketi oluşturun ve doğrulanmış yedekle kurun.
 
 Hedef dil desteği, seçtiğiniz sağlayıcıya ve oyunun yazı tiplerine bağlıdır. Proje, bütün dillerin çalıştığını iddia etmez.

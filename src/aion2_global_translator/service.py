@@ -20,15 +20,15 @@ import sys
 import tempfile
 import uuid
 
-BUILD = "25926599"
+BUILD = "26077854"
 PAK = "pakchunk502000-Windows_0_P"
-ORIGINAL_SHA = "07d61d63c131ce86a5674be28e14d9d93a11631a8704eb9c85e310123f11088c"
-ORIGINAL_DAT_SHA = "694a7d39e6bbe27c85dafa127d3feaca2a4a7a3c502ccf7385078b9c74dc6a3f"
+ORIGINAL_SHA = "4565d9d817f6ca8a7a11bbd0d25d0d91c6306c234be5f279ecfb33d5fba47080"
+ORIGINAL_DAT_SHA = "4beef8a90b37ece24ec34a4684949ff40fa1f79a61550c7dfef47c63b941bfd9"
 # Public compatibility key for this build; never a provider credential.
 PAK_AES = "06038EF544B6007614F8574F1B7C2A3F0D565F74CDCC1B366B4EA1A17B97CBFF"
 MARKER = b"AION2_LOOSE"
 EXTENSIONS = (".pak", ".sig", ".ucas", ".utoc")
-DISPLAY_ENTRY_COUNT = 153042
+DISPLAY_ENTRY_COUNT = 153185
 
 
 def _turkish_language(language):
@@ -175,7 +175,8 @@ class TranslatorService:
         manifest = game.parents[1] / "appmanifest_3393110.acf"
         match = re.search(r'"buildid"\s+"(\d+)"', manifest.read_text("utf-8"))
         if not match or match.group(1) != BUILD:
-            raise ValueError("Unsupported Steam build. Expected " + BUILD + "; nothing was changed")
+            raise ValueError("Unsupported Steam build. Found " + (match.group(1) if match else "unknown")
+                             + "; expected " + BUILD + ". Update the translator and rebuild the language pack; nothing was changed")
         content = game / "Aion2/Content"
         backup = self.data / "backups" / sha(str(game).casefold().encode())[:16] / BUILD
         return game, content / "Paks/L10N/Text/en-US", content / "L10N/Text/en-US/L10NString.dat", backup
@@ -216,7 +217,7 @@ class TranslatorService:
             raise ValueError("Unknown patch detected. Restore it with its original installer first")
         return dict(game_dir=str(game), build=BUILD, status="installed" if state else "original",
                     installed_language=state["target_language"] if state else None,
-                    entries=state["entries"] if state else 153042,
+                    entries=state["entries"] if state else DISPLAY_ENTRY_COUNT,
                     message="Verified native translation" if state else "Verified original English game")
 
     def _closed(self):
@@ -249,10 +250,15 @@ class TranslatorService:
         stage = Path(stage)
         meta = json.loads((stage / "patch-meta.json").read_text("utf-8"))
         dat = (stage / "L10NString.dat").read_bytes()
+        if meta.get("steam_build") != BUILD:
+            raise ValueError("Language pack build mismatch. Found " + str(meta.get("steam_build", "unknown"))
+                             + "; expected " + BUILD + ". Rebuild the language pack for the current game; nothing was changed")
         if (meta.get("steam_build") != BUILD or meta.get("original_pak_sha256") != ORIGINAL_SHA
                 or not meta.get("quality_gate_passed") or meta.get("remaining_untranslated_candidate_entries") != 0
-                or meta.get("source_entry_count") != 153042 or sha(dat) != meta.get("dat_sha256")):
+                or meta.get("source_entry_count") != DISPLAY_ENTRY_COUNT or sha(dat) != meta.get("dat_sha256")):
             raise ValueError("Translation package failed compatibility or coverage checks")
+        from .update_recovery import recover_known_update
+        recover_known_update(pakdir, loose, backup, self._closed)
         state = self._state(pakdir, loose, backup)
         snapshots = {pakdir / (PAK + ext): (pakdir / (PAK + ext)).read_bytes() if (pakdir / (PAK + ext)).exists() else None for ext in EXTENSIONS}
         snapshots[loose] = loose.read_bytes() if loose.exists() else None
@@ -293,7 +299,7 @@ class TranslatorService:
                 atomic(pakdir / (PAK + ".pak"), MARKER)
             atomic(loose, dat)
             language = meta.get("target_language", "tr")
-            json_write(statepath, dict(steam_build=BUILD, dat_sha256=sha(dat), target_language=language, entries=153042))
+            json_write(statepath, dict(steam_build=BUILD, dat_sha256=sha(dat), target_language=language, entries=DISPLAY_ENTRY_COUNT))
             self._state(pakdir, loose, backup)
         except Exception:
             for path, data in snapshots.items():
@@ -374,7 +380,7 @@ class TranslatorService:
         if sha(data) != ORIGINAL_DAT_SHA:
             raise ValueError("English source DAT checksum mismatch; cached source must match the verified build")
         doc = L10NDocument.decode(data, "en-US", manifest)
-        if len(doc.table.entries) != 153042 or doc.encode() != data or doc.table.namespace.text != "AION2":
+        if len(doc.table.entries) != DISPLAY_ENTRY_COUNT or doc.encode() != data or doc.table.namespace.text != "AION2":
             raise ValueError("Source codec verification failed")
         return doc, manifest
 

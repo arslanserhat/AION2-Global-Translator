@@ -86,7 +86,7 @@ class TurkishHeadingRepair(unittest.TestCase):
         self.assertEqual((prior / "L10NString.dat").read_bytes(), self.installed_dat)
         self.assertEqual(json.loads((prior / "installed-state.json").read_text("utf-8")), self.state)
         meta = json.loads((stage / "patch-meta.json").read_text("utf-8"))
-        self.assertEqual(meta["display_profile"], "turkish-heading-font-safe-v1")
+        self.assertEqual(meta["display_profile"], "turkish-heading-font-safe-v2")
         self.assertEqual(meta["dat_sha256"], s.sha((stage / "L10NString.dat").read_bytes()))
         self.assertEqual(meta["display_report"]["canonical_skill_name_fixes"], ["SkillString_DEMO_Snipe_skill_name"])
 
