@@ -20,15 +20,15 @@ import sys
 import tempfile
 import uuid
 
-BUILD = "26077854"
+BUILD = "26262663"
 PAK = "pakchunk502000-Windows_0_P"
-ORIGINAL_SHA = "4565d9d817f6ca8a7a11bbd0d25d0d91c6306c234be5f279ecfb33d5fba47080"
-ORIGINAL_DAT_SHA = "4beef8a90b37ece24ec34a4684949ff40fa1f79a61550c7dfef47c63b941bfd9"
+ORIGINAL_SHA = "6c156d58d93cad782ef747b57b0eb2decf6e22e9e8bf5f29619cf350baa04ca3"
+ORIGINAL_DAT_SHA = "932663700f42fd3180f973ea78d9ed3b76620ff04d5f032269a488ca0ddc5747"
 # Public compatibility key for this build; never a provider credential.
 PAK_AES = "06038EF544B6007614F8574F1B7C2A3F0D565F74CDCC1B366B4EA1A17B97CBFF"
 MARKER = b"AION2_LOOSE"
 EXTENSIONS = (".pak", ".sig", ".ucas", ".utoc")
-DISPLAY_ENTRY_COUNT = 153185
+DISPLAY_ENTRY_COUNT = 153297
 
 
 def _turkish_language(language):
@@ -144,9 +144,52 @@ class TranslatorService:
         if not self.repak.exists() and getattr(sys, "frozen", False):
             self.repak = Path(sys._MEIPASS) / "tools/repak.exe"
         self.on_event = on_event or (lambda event: None)
+        self._profile = None
+        self._probed = None
+        self._verified_pending_marker = False
+
+    @property
+    def build(self):
+        return self._profile["build"] if self._profile else BUILD
+
+    @property
+    def original_sha(self):
+        return self._profile["pak_sha256"] if self._profile else ORIGINAL_SHA
+
+    @property
+    def original_dat_sha(self):
+        return self._profile["dat_sha256"] if self._profile else ORIGINAL_DAT_SHA
+
+    @property
+    def entry_count(self):
+        return self._profile["entries"] if self._profile else DISPLAY_ENTRY_COUNT
 
     def emit(self, message, progress=None):
         self.on_event(dict(message=message, progress=progress, level="info"))
+
+    def automatic_settings(self):
+        path = self.data / "settings/automatic.json"
+        try:
+            value = json.loads(path.read_text("utf-8"))
+            return value if isinstance(value, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    def set_automatic(self, enabled):
+        settings = self.automatic_settings()
+        settings["enabled"] = bool(enabled)
+        json_write(self.data / "settings/automatic.json", settings)
+
+    def automatic_update(self, game_dir):
+        settings = self.automatic_settings()
+        if not settings.get("enabled") or not settings.get("language") or settings.get("game_dir") != str(Path(game_dir).resolve()):
+            return dict(status="unchanged")
+        if game_running():
+            return dict(status="waiting_game", message="Close AION 2; automatic repair will continue while this app remains open.")
+        info = self.inspect(game_dir)
+        if info["status"] == "installed" and info.get("installed_language") == settings["language"]:
+            return dict(status="unchanged")
+        return self.apply_language(game_dir, settings["language"])
 
     def detect_game(self):
         roots = []
@@ -174,22 +217,45 @@ class TranslatorService:
             raise ValueError("Select the AION2 Steam game folder")
         manifest = game.parents[1] / "appmanifest_3393110.acf"
         match = re.search(r'"buildid"\s+"(\d+)"', manifest.read_text("utf-8"))
-        if not match or match.group(1) != BUILD:
-            raise ValueError("Unsupported Steam build. Found " + (match.group(1) if match else "unknown")
-                             + "; expected " + BUILD + ". Update the translator and rebuild the language pack; nothing was changed")
+        if not match:
+            raise ValueError("Steam build could not be read; nothing was changed")
+        build = match.group(1)
         content = game / "Aion2/Content"
-        backup = self.data / "backups" / sha(str(game).casefold().encode())[:16] / BUILD
-        return game, content / "Paks/L10N/Text/en-US", content / "L10N/Text/en-US/L10NString.dat", backup
+        backup = self.data / "backups" / sha(str(game).casefold().encode())[:16] / build
+        pakdir, loose = content / "Paks/L10N/Text/en-US", content / "L10N/Text/en-US/L10NString.dat"
+        self._verified_pending_marker = False
+        if build == BUILD:
+            self._profile = None
+            self._probed = None
+        else:
+            from .compatibility import probe_source
+            sourcepak = pakdir / (PAK + ".pak")
+            if sourcepak.is_file() and sourcepak.read_bytes() == MARKER:
+                if (backup / "state.json").is_file():
+                    # Same-build installation: verify its own recorded original.
+                    meta = json.loads((backup / "backup.json").read_text("utf-8"))
+                    sourcepak = backup / (PAK + ".pak")
+                    if meta.get("steam_build") != build or sha(sourcepak.read_bytes()) != meta.get("files", {}).get(PAK + ".pak"):
+                        raise ValueError("Original backup is invalid")
+                else:
+                    from .update_recovery import find_previous_install
+                    old, _, _ = find_previous_install(pakdir, loose, backup)
+                    sourcepak = old / (PAK + ".pak")
+                    self._verified_pending_marker = True
+            self.emit("Checking updated localization format and source fingerprints", 2)
+            probe = probe_source(game, sourcepak, self.repak, self.data, build)
+            self._profile, self._probed = probe["profile"], probe
+        return game, pakdir, loose, backup
 
     def _backup(self, backup):
         meta = json.loads((backup / "backup.json").read_text("utf-8"))
         names = {PAK + ext for ext in EXTENSIONS} | {"original-loose.dat"}
-        if meta.get("steam_build") != BUILD or set(meta.get("files", {})) != names:
+        if meta.get("steam_build") != self.build or set(meta.get("files", {})) != names:
             raise ValueError("Backup manifest is invalid")
         for name, digest in meta["files"].items():
             if digest is not None and sha((backup / name).read_bytes()) != digest:
                 raise ValueError("Backup checksum mismatch: " + name)
-        if meta["files"][PAK + ".pak"] != ORIGINAL_SHA:
+        if meta["files"][PAK + ".pak"] != self.original_sha:
             raise ValueError("Unknown original PAK")
         return meta
 
@@ -199,7 +265,7 @@ class TranslatorService:
             return None
         state = json.loads(path.read_text("utf-8"))
         self._backup(backup)
-        if state.get("steam_build") != BUILD or (pakdir / (PAK + ".pak")).read_bytes() != MARKER:
+        if state.get("steam_build") != self.build or (pakdir / (PAK + ".pak")).read_bytes() != MARKER:
             raise ValueError("Game packages changed since installation")
         if not loose.is_file() or sha(loose.read_bytes()) != state["dat_sha256"]:
             raise ValueError("Installed translation changed since installation")
@@ -213,16 +279,28 @@ class TranslatorService:
     def inspect(self, game_dir):
         game, pakdir, loose, backup = self.paths(game_dir)
         state = self._state(pakdir, loose, backup)
-        if state is None and sha((pakdir / (PAK + ".pak")).read_bytes()) != ORIGINAL_SHA:
+        if state is None and not self._verified_pending_marker and sha((pakdir / (PAK + ".pak")).read_bytes()) != self.original_sha:
             raise ValueError("Unknown patch detected. Restore it with its original installer first")
-        return dict(game_dir=str(game), build=BUILD, status="installed" if state else "original",
+        leftovers = state is None and (loose.exists() or any(pakdir.glob("*.codex-original")))
+        return dict(game_dir=str(game), build=self.build, status="update_pending" if leftovers else "installed" if state else "original",
                     installed_language=state["target_language"] if state else None,
-                    entries=state["entries"] if state else DISPLAY_ENTRY_COUNT,
+                    entries=state["entries"] if state else self.entry_count,
                     message="Verified native translation" if state else "Verified original English game")
 
     def _closed(self):
         if game_running():
             raise RuntimeError("Close AION 2 before installing or restoring; restart it afterwards")
+
+    def _closed_build(self, game):
+        self._closed()
+        text = (Path(game).parents[1] / "appmanifest_3393110.acf").read_text("utf-8")
+        current = re.search(r'"buildid"\s+"(\d+)"', text)
+        if current is None or current.group(1) != self.build:
+            raise ValueError("Steam build changed during preparation; nothing was installed")
+        if self._profile and self._profile.get("startup_pak_sha256"):
+            startup = Path(game) / "Aion2/Content/Paks/pakchunk0-Windows.pak"
+            if sha(startup.read_bytes()) != self._profile["startup_pak_sha256"]:
+                raise ValueError("Startup source changed during preparation; nothing was installed")
 
     def install_turkish(self, game_dir):
         stage = self.data / "stages/tr"
@@ -242,6 +320,9 @@ class TranslatorService:
         meta = json.loads((stage / 'patch-meta.json').read_text('utf-8'))
         if normalize_language(meta.get('target_language', '')) != code:
             raise ValueError('Prepared pack language does not match the selected target')
+        self.paths(game_dir)
+        if meta.get("steam_build") != self.build or meta.get("original_pak_sha256") != self.original_sha:
+            self.migrate_translation(game_dir, code)
         return self.install_stage(game_dir, stage)
 
     def install_stage(self, game_dir, stage):
@@ -250,15 +331,24 @@ class TranslatorService:
         stage = Path(stage)
         meta = json.loads((stage / "patch-meta.json").read_text("utf-8"))
         dat = (stage / "L10NString.dat").read_bytes()
-        if meta.get("steam_build") != BUILD:
+        if meta.get("steam_build") != self.build:
             raise ValueError("Language pack build mismatch. Found " + str(meta.get("steam_build", "unknown"))
-                             + "; expected " + BUILD + ". Rebuild the language pack for the current game; nothing was changed")
-        if (meta.get("steam_build") != BUILD or meta.get("original_pak_sha256") != ORIGINAL_SHA
-                or not meta.get("quality_gate_passed") or meta.get("remaining_untranslated_candidate_entries") != 0
-                or meta.get("source_entry_count") != DISPLAY_ENTRY_COUNT or sha(dat) != meta.get("dat_sha256")):
+                             + "; expected " + self.build + ". Rebuild the language pack for the current game; nothing was changed")
+        if (meta.get("steam_build") != self.build or meta.get("original_pak_sha256") != self.original_sha
+                or meta.get("quality_gate_passed") is not True or meta.get("remaining_untranslated_candidate_entries") != 0
+                or meta.get("source_entry_count") != self.entry_count or sha(dat) != meta.get("dat_sha256")):
             raise ValueError("Translation package failed compatibility or coverage checks")
-        from .update_recovery import recover_known_update
-        recover_known_update(pakdir, loose, backup, self._closed)
+        from .update_recovery import recover_update, EMPTY_COMPANIONS
+        for ext, expected in EMPTY_COMPANIONS.items():
+            container = pakdir / (PAK + ext)
+            if not container.exists():
+                container = pakdir / (PAK + ext + ".codex-original")
+            if not container.is_file() or sha(container.read_bytes()) != expected:
+                raise ValueError("Unrecognized/nonempty locale container; automatic installation is unavailable for this format")
+        self._validate_stage(game, dat, meta)
+        profile = self._profile or dict(build=self.build, pak_sha256=self.original_sha,
+            companions={".sig": "0c33b72da6c6e3e5e335f76f4cb950d6ef473322fdfb2d0bd1a78e64b0b23546", **EMPTY_COMPANIONS})
+        recover_update(pakdir, loose, backup, lambda: self._closed_build(game), profile)
         state = self._state(pakdir, loose, backup)
         snapshots = {pakdir / (PAK + ext): (pakdir / (PAK + ext)).read_bytes() if (pakdir / (PAK + ext)).exists() else None for ext in EXTENSIONS}
         snapshots[loose] = loose.read_bytes() if loose.exists() else None
@@ -268,7 +358,7 @@ class TranslatorService:
         statepath = backup / "state.json"
         previous_state = statepath.read_bytes() if statepath.exists() else None
         if state is None:
-            if sha(snapshots[pakdir / (PAK + ".pak")]) != ORIGINAL_SHA or snapshots[loose] is not None:
+            if sha(snapshots[pakdir / (PAK + ".pak")]) != self.original_sha or snapshots[loose] is not None:
                 raise ValueError("Expected original English files and no loose translation")
             if any(snapshots[pakdir / (PAK + ext + ".codex-original")] is not None for ext in EXTENSIONS[1:]):
                 raise ValueError("Existing companion backup belongs to another installer")
@@ -282,12 +372,12 @@ class TranslatorService:
                 atomic(backup / name, data)
                 records[name] = sha(data)
             records["original-loose.dat"] = None
-            json_write(backup / "backup.json", dict(steam_build=BUILD, files=records))
+            json_write(backup / "backup.json", dict(steam_build=self.build, files=records))
             self._backup(backup)
         self.emit("Installing native text file", 95)
         # Rejection before the first mutation must never trigger rollback over
         # the external edit that caused the rejection.
-        self._closed()
+        self._closed_build(game)
         if any((p.read_bytes() if p.exists() else None) != before for p, before in snapshots.items()):
             raise ValueError("Game files changed during preparation")
         if (statepath.read_bytes() if statepath.exists() else None) != previous_state:
@@ -299,7 +389,7 @@ class TranslatorService:
                 atomic(pakdir / (PAK + ".pak"), MARKER)
             atomic(loose, dat)
             language = meta.get("target_language", "tr")
-            json_write(statepath, dict(steam_build=BUILD, dat_sha256=sha(dat), target_language=language, entries=DISPLAY_ENTRY_COUNT))
+            json_write(statepath, dict(steam_build=self.build, dat_sha256=sha(dat), target_language=language, entries=self.entry_count))
             self._state(pakdir, loose, backup)
         except Exception:
             for path, data in snapshots.items():
@@ -313,7 +403,39 @@ class TranslatorService:
                 atomic(statepath, previous_state)
             raise
         self.emit("Installed. Restart AION 2 to load the new text.", 100)
+        settings = self.automatic_settings()
+        json_write(self.data / "settings/automatic.json", dict(settings,
+            enabled=settings.get("enabled", True), game_dir=str(game), language=language))
         return self.inspect(game)
+
+    def _validate_stage(self, game, data, meta):
+        """Validate the actual DAT, independent of self-reported quality flags."""
+        from .codec import L10NDocument
+        from .protection import validate
+        original, manifest = self._extract(game)
+        if (meta.get("steam_build") != self.build or meta.get("original_pak_sha256") != self.original_sha
+                or (meta.get("original_dat_sha256") and meta["original_dat_sha256"] != self.original_dat_sha)):
+            raise ValueError("Language pack source changed during validation; nothing was installed")
+        decoded = L10NDocument.decode(data, "en-US", manifest)
+        source, values = original.table.as_dict(), decoded.table.as_dict()
+        if (decoded.table.namespace.text != original.table.namespace.text
+                or len(decoded.table.entries) != len(original.table.entries)
+                or [k.text for k, _ in decoded.table.entries] != [k.text for k, _ in original.table.entries]
+                or decoded.table.version != original.table.version or decoded.encode() != data
+                or decoded.prefix != original.prefix or decoded.tail != original.tail
+                or decoded.table.trailing != original.table.trailing):
+            raise ValueError("Language DAT namespace, key order, version or codec verification failed")
+        for key, value in values.items():
+            try:
+                validate(source[key], value)
+            except ValueError:
+                # Earlier local Turkish packs used translated HP/MP labels.
+                # Their tags, placeholders, numbers and controls still must
+                # independently match the current original source exactly.
+                if not _turkish_language(meta.get("target_language")):
+                    raise
+                _legacy_structure_and_abbreviations(source[key], value)
+        return decoded
 
     def restore(self, game_dir):
         self._closed()
@@ -351,6 +473,7 @@ class TranslatorService:
             atomic(statepath, previous)
             raise
         self.emit("Original English files restored", 100)
+        self.set_automatic(False)
         return self.inspect(game)
 
     def _extract(self, game_dir):
@@ -358,11 +481,13 @@ class TranslatorService:
         game, pakdir, loose, backup = self.paths(game_dir)
         state = self._state(pakdir, loose, backup)
         sourcepak = backup / (PAK + ".pak") if state else pakdir / (PAK + ".pak")
-        if sha(sourcepak.read_bytes()) != ORIGINAL_SHA:
+        if self._probed is not None:
+            return self._probed["doc"], self._probed["manifest"]
+        if sha(sourcepak.read_bytes()) != self.original_sha:
             raise ValueError("Unknown source PAK")
         if not self.repak.is_file():
             raise FileNotFoundError("repak.exe 0.2.3 is required in tools/ or REPAK_PATH; see README")
-        extracted = self.data / "source" / BUILD
+        extracted = self.data / "source" / self.build
         datpath = extracted / "locale/Aion2/Content/L10N/Text/en-US/L10NString.dat"
         manifestpath = extracted / "startup/Aion2/Content/StartUpData/Table/key_manifest.dat"
         for source, destination, wanted in [(sourcepak, extracted / "locale", datpath),
@@ -377,10 +502,10 @@ class TranslatorService:
             if result.returncode or not wanted.is_file():
                 raise RuntimeError("repak extraction failed: " + result.stderr[-1000:])
         data, manifest = datpath.read_bytes(), manifestpath.read_bytes()
-        if sha(data) != ORIGINAL_DAT_SHA:
+        if sha(data) != self.original_dat_sha:
             raise ValueError("English source DAT checksum mismatch; cached source must match the verified build")
         doc = L10NDocument.decode(data, "en-US", manifest)
-        if len(doc.table.entries) != DISPLAY_ENTRY_COUNT or doc.encode() != data or doc.table.namespace.text != "AION2":
+        if len(doc.table.entries) != self.entry_count or doc.encode() != data or doc.table.namespace.text != "AION2":
             raise ValueError("Source codec verification failed")
         return doc, manifest
 
@@ -407,8 +532,8 @@ class TranslatorService:
         source = original.table.as_dict()
         installed = L10NDocument.decode(installed_dat, "en-US", manifest)
         current = installed.table.as_dict()
-        if (len(source) != DISPLAY_ENTRY_COUNT or len(original.table.entries) != DISPLAY_ENTRY_COUNT
-                or len(current) != DISPLAY_ENTRY_COUNT or len(installed.table.entries) != DISPLAY_ENTRY_COUNT
+        if (len(source) != self.entry_count or len(original.table.entries) != self.entry_count
+                or len(current) != self.entry_count or len(installed.table.entries) != self.entry_count
                 or set(current) != set(source) or installed.table.namespace.text != "AION2"
                 or original.table.namespace.text != "AION2"):
             raise ValueError("Installed Turkish translation does not match the complete original source key set")
@@ -437,14 +562,14 @@ class TranslatorService:
                         message="Installed Turkish headings already use the compatible display profile.")
         dat = original.encode(original.table.translated(corrected))
         decoded = L10NDocument.decode(dat, "en-US", manifest)
-        if (decoded.table.as_dict() != corrected or len(decoded.table.entries) != DISPLAY_ENTRY_COUNT
+        if (decoded.table.as_dict() != corrected or len(decoded.table.entries) != self.entry_count
                 or decoded.table.namespace.text != "AION2"
                 or [key.text for key, _ in decoded.table.entries] != [key.text for key, _ in original.table.entries]):
             raise ValueError("Heading repair failed exact dictionary/order verification")
         stages = self.data / "stages"
         prior = stages / "tr-before-font-fix"
-        prior_meta = dict(steam_build=BUILD, target_language="tr", source_entry_count=len(source),
-                          dat_sha256=sha(installed_dat), original_pak_sha256=ORIGINAL_SHA,
+        prior_meta = dict(steam_build=self.build, target_language="tr", source_entry_count=len(source),
+                          dat_sha256=sha(installed_dat), original_pak_sha256=self.original_sha,
                           quality_gate_passed=True, remaining_untranslated_candidate_entries=0,
                           restore_point="before-turkish-heading-font-repair",
                           validation_scope="verified legacy translation, complete keys, original structural literals and codec decode; not a full semantic review",
@@ -469,19 +594,19 @@ class TranslatorService:
                     temporary.rmdir()
         saved_meta = json.loads((prior / "patch-meta.json").read_text("utf-8"))
         saved_dat = (prior / "L10NString.dat").read_bytes()
-        if (saved_meta.get("steam_build") != BUILD or saved_meta.get("original_pak_sha256") != ORIGINAL_SHA
-                or saved_meta.get("source_entry_count") != DISPLAY_ENTRY_COUNT
+        if (saved_meta.get("steam_build") != self.build or saved_meta.get("original_pak_sha256") != self.original_sha
+                or saved_meta.get("source_entry_count") != self.entry_count
                 or saved_meta.get("target_language") != "tr" or saved_meta.get("dat_sha256") != sha(saved_dat)
                 or saved_meta.get("quality_gate_passed") is not True
                 or saved_meta.get("remaining_untranslated_candidate_entries") != 0):
             raise ValueError("Existing pre-repair pack is invalid; it was preserved without overwriting")
         saved = L10NDocument.decode(saved_dat, "en-US", manifest)
-        if (len(saved.table.entries) != DISPLAY_ENTRY_COUNT or set(saved.table.as_dict()) != set(source)
+        if (len(saved.table.entries) != self.entry_count or set(saved.table.as_dict()) != set(source)
                 or saved.table.namespace.text != "AION2"):
             raise ValueError("Existing pre-repair pack has a different key set; it was not overwritten")
         stage = stages / "tr-font-safe"
-        meta = dict(steam_build=BUILD, target_language="tr", source_entry_count=len(source),
-                    dat_sha256=sha(dat), original_pak_sha256=ORIGINAL_SHA, quality_gate_passed=True,
+        meta = dict(steam_build=self.build, target_language="tr", source_entry_count=len(source),
+                    dat_sha256=sha(dat), original_pak_sha256=self.original_sha, quality_gate_passed=True,
                     remaining_untranslated_candidate_entries=0, display_profile=display_report["profile"],
                     display_report=display_report, repaired_from_dat_sha256=sha(installed_dat),
                     context_terms_report=context_report,
@@ -514,8 +639,8 @@ class TranslatorService:
             meta = json.loads(meta_bytes.decode("utf-8"))
             data = (stage / "L10NString.dat").read_bytes()
             source = source_doc.table.as_dict()
-            if (not isinstance(meta, dict) or meta.get("steam_build") != BUILD
-                    or meta.get("original_pak_sha256") != ORIGINAL_SHA
+            if (not isinstance(meta, dict) or meta.get("steam_build") != self.build
+                    or meta.get("original_pak_sha256") != self.original_sha
                     or normalize_language(meta.get("target_language", "")) != target_lang
                     or meta.get("source_entry_count") != len(source)
                     or meta.get("quality_gate_passed") is not True
@@ -533,6 +658,154 @@ class TranslatorService:
             raise ValueError("Unchanged legacy Turkish cells require an existing verified same-language pack") from error
         return dict(stage=stage, values=values, dat=data, meta_bytes=meta_bytes,
                     dat_sha256=sha(data), meta_sha256=sha(meta_bytes))
+
+    def _migration_reference(self, stage, language):
+        """Recover source and translations together; a matching ID alone is insufficient."""
+        from .codec import L10NDocument
+        from .display import apply_turkish_heading_compatibility
+        meta_bytes = (stage / "patch-meta.json").read_bytes()
+        meta = json.loads(meta_bytes)
+        data = (stage / "L10NString.dat").read_bytes()
+        values = flat_json(stage / "entries.translated.json")
+        if (meta.get("target_language") != language or meta.get("quality_gate_passed") is not True
+                or meta.get("dat_sha256") != sha(data) or meta.get("remaining_untranslated_candidate_entries") != 0):
+            raise ValueError("Previous pack metadata or checksum is invalid")
+        old_build = str(meta.get("steam_build", ""))
+        if not old_build.isdecimal():
+            raise ValueError("Previous pack build is invalid")
+        cached = self.data / "source" / old_build
+        source_path = stage / "entries.source.json"
+        if source_path.is_file():
+            source_bytes = source_path.read_bytes()
+            if sha(source_bytes) != meta.get("source_map_sha256"):
+                raise ValueError("Previous source snapshot checksum mismatch")
+            source = flat_json(source_path)
+        else:
+            # Compatibility with packs created before source snapshots existed.
+            datpath = cached / "locale/Aion2/Content/L10N/Text/en-US/L10NString.dat"
+            manifestpath = cached / "startup/Aion2/Content/StartUpData/Table/key_manifest.dat"
+            original = datpath.read_bytes()
+            expected = {"25926599": "694a7d39e6bbe27c85dafa127d3feaca2a4a7a3c502ccf7385078b9c74dc6a3f",
+                        "26077854": "4beef8a90b37ece24ec34a4684949ff40fa1f79a61550c7dfef47c63b941bfd9",
+                        BUILD: ORIGINAL_DAT_SHA}.get(old_build)
+            if expected is None or sha(original) != expected:
+                raise ValueError("Verified previous English source is required for automatic migration")
+            source = L10NDocument.decode(original, "en-US", manifestpath.read_bytes()).table.as_dict()
+        manifestpath = stage / "source-key-manifest.dat"
+        if not manifestpath.is_file():
+            manifestpath = cached / "startup/Aion2/Content/StartUpData/Table/key_manifest.dat"
+        manifest = manifestpath.read_bytes()
+        if meta.get("manifest_sha256") and sha(manifest) != meta["manifest_sha256"]:
+            raise ValueError("Previous key manifest checksum mismatch")
+        decoded = L10NDocument.decode(data, "en-US", manifest)
+        displayed = values
+        if _turkish_language(language) and (meta.get("font_compatible_titles") or meta.get("display_profile")):
+            displayed, _ = apply_turkish_heading_compatibility(values)
+        if (set(source) != set(values) or displayed != decoded.table.as_dict()
+                or decoded.table.namespace.text != "AION2" or decoded.encode() != data
+                or len(decoded.table.entries) != len(source)):
+            raise ValueError("Previous editable map, source and native DAT disagree")
+        for key in source:
+            _legacy_structure_and_abbreviations(source[key], values[key])
+        return source, values, meta, meta_bytes, data
+
+    def migrate_translation(self, game_dir, target_language, corrections_path=None):
+        """Rebuild against CURRENT English; never install stale or partial tables."""
+        from .codec import L10NDocument
+        from .migration import plan_migration, finish_migration
+        from .multilingual import normalize_language, apply_target_context_terms
+        from .protection import prepare, validate
+        from .display import apply_turkish_heading_compatibility
+        language = normalize_language(target_language)
+        self.emit("Comparing updated English with the previous translation", 5)
+        doc, manifest = self._extract(game_dir)
+        source = doc.table.as_dict()
+        stage = self.data / "stages" / language
+        reference_files = {stage / name: (stage / name).read_bytes() if (stage / name).exists() else None
+            for name in ("patch-meta.json", "L10NString.dat", "entries.translated.json", "entries.source.json", "source-key-manifest.dat")}
+        prior_source, prior_values, prior_meta, prior_meta_bytes, prior_dat = self._migration_reference(stage, language)
+        if any((path.read_bytes() if path.exists() else None) != data for path, data in reference_files.items()):
+            raise ValueError("Previous pack changed while reading migration reference")
+        plan = plan_migration(prior_source, prior_values, source)
+        update = self.data / "updates" / self.build / language / self.original_dat_sha
+        pending_path = update / "pending.json"
+        json_write(pending_path, plan["pending"])
+        corrections = {}
+        correction_file = Path(corrections_path) if corrections_path else update / "corrections.json"
+        if correction_file.is_file():
+            corrections = flat_json(correction_file)
+        elif plan["pending"]:
+            settings_path = self.data / "settings" / (language + "-provider.json")
+            settings = json.loads(settings_path.read_text("utf-8")) if settings_path.is_file() else {}
+            if settings.get("provider") == "libretranslate" and settings.get("url"):
+                from .providers import LibreTranslateProvider
+                provider = LibreTranslateProvider(settings["url"], os.environ.get("AION2_TRANSLATION_API_KEY", ""), target=language)
+                languages = provider.languages()
+                english = next((x for x in languages if x["code"] == "en"), None)
+                if not english or language not in {x["code"] for x in languages} or ("targets" in english and language not in english["targets"]):
+                    raise ValueError("Configured provider does not support this English-to-target pair")
+                for index, (key, item) in enumerate(plan["pending"].items()):
+                    protected = prepare(item["source"])
+                    value = protected.restore(provider.translate_batch([protected.html])[0])
+                    validate(item["source"], value)
+                    corrections[key] = value
+                    self.emit("Translating changed text %s / %s" % (index + 1, len(plan["pending"])), 10 + 70 * (index + 1) / len(plan["pending"]))
+            else:
+                raise ValueError("Update needs translations for " + str(len(plan["pending"]))
+                    + " new/changed records. Existing translation and game files were preserved. Review " + str(pending_path)
+                    + "; configure your translation server or provide corrections.json for this update.")
+        canonical = finish_migration(plan, corrections)
+        canonical, context_report = apply_target_context_terms(source, canonical, language)
+        displayed, display_report = canonical, None
+        if _turkish_language(language) and prior_meta.get("font_compatible_titles", True):
+            displayed, display_report = apply_turkish_heading_compatibility(canonical)
+        for key, value in displayed.items():
+            if key in plan["carried"]:
+                _legacy_structure_and_abbreviations(source[key], value)
+                # Corrections/context rules may not invent new structural tokens.
+                validate(prior_values[key], value)
+            else:
+                validate(source[key], value)
+        dat = doc.encode(doc.table.translated(displayed))
+        if L10NDocument.decode(dat, "en-US", manifest).table.as_dict() != displayed:
+            raise ValueError("Migrated translation codec verification failed")
+        source_bytes = json.dumps(source, ensure_ascii=False, indent=2).encode("utf-8")
+        archive = self.data / "history" / language / (str(prior_meta["steam_build"]) + "-" + uuid.uuid4().hex)
+        temporary = stage.parent / ("." + language + "-update-" + uuid.uuid4().hex)
+        temporary.mkdir(parents=True)
+        meta = dict(steam_build=self.build, target_language=language, source_entry_count=len(source),
+            original_pak_sha256=self.original_sha, original_dat_sha256=self.original_dat_sha,
+            dat_sha256=sha(dat), quality_gate_passed=True, remaining_untranslated_candidate_entries=0,
+            source_map_sha256=sha(source_bytes), manifest_sha256=sha(manifest),
+            editable_translation_map="entries.translated.json", font_compatible_titles=bool(display_report),
+            display_profile=display_report["profile"] if display_report else None,
+            migrated_from=str(prior_meta["steam_build"]), prior_stage=str(archive),
+            migration_carried=len(plan["carried"]), migration_translated=len(corrections),
+            migration_removed=len(plan["removed"]), human_reviewed=False, in_game_verified=False,
+            validation_scope="identical key and English source carry-forward; strict new/changed protected literals; original structure for legacy abbreviation aliases; exact native roundtrip, not complete semantic/in-game review")
+        try:
+            atomic(temporary / "L10NString.dat", dat)
+            atomic(temporary / "entries.source.json", source_bytes)
+            atomic(temporary / "source-key-manifest.dat", manifest)
+            json_write(temporary / "entries.translated.json", canonical)
+            json_write(temporary / "patch-meta.json", meta)
+            json_write(temporary / "migration-report.json", {k: meta[k] for k in ("migrated_from", "migration_carried", "migration_translated", "migration_removed")})
+            if display_report:
+                json_write(temporary / "display-report.json", display_report)
+            if any((path.read_bytes() if path.exists() else None) != data for path, data in reference_files.items()):
+                raise ValueError("Previous pack changed during migration; nothing was replaced")
+            archive.parent.mkdir(parents=True, exist_ok=True)
+            stage.rename(archive)
+            try:
+                temporary.rename(stage)
+            except Exception:
+                archive.rename(stage)
+                raise
+        finally:
+            if temporary.exists():
+                shutil.rmtree(temporary)
+        return dict(status="prepared", stage=str(stage), build=self.build, entries=len(source),
+            carried=len(plan["carried"]), translated=len(corrections), removed=len(plan["removed"]))
 
     def build_translation(self, game_dir, target_lang, provider_config):
         from .codec import L10NDocument
@@ -655,9 +928,16 @@ class TranslatorService:
             raise ValueError("Unchanged English candidates need review (proper names may be valid). Review " + str(report) + "; then select the reviewed-unchanged option.")
         atomic(stage / "L10NString.dat", dat)
         json_write(stage / "entries.translated.json", canonical_output)
-        meta = dict(steam_build=BUILD, target_language=target_lang, source_entry_count=len(source),
+        source_bytes = json.dumps(source, ensure_ascii=False, indent=2).encode("utf-8")
+        atomic(stage / "entries.source.json", source_bytes)
+        # Synthetic callers can use a parsed manifest dictionary in unit tests.
+        if isinstance(manifest, bytes):
+            atomic(stage / "source-key-manifest.dat", manifest)
+        meta = dict(steam_build=self.build, target_language=target_lang, source_entry_count=len(source),
+                    source_map_sha256=sha(source_bytes),
+                    manifest_sha256=sha(manifest) if isinstance(manifest, bytes) else None,
                     protection_profile=PROTECTION_PROFILE,
-                    dat_sha256=sha(dat), original_pak_sha256=ORIGINAL_SHA, quality_gate_passed=True,
+                    dat_sha256=sha(dat), original_pak_sha256=self.original_sha, quality_gate_passed=True,
                     remaining_untranslated_candidate_entries=0, machine_translation=provider_config.get("provider") != "offline-json",
                     unchanged_linguistic_entry_count=len(unchanged),
                     unchanged_linguistic_reviewed=bool(provider_config.get("review_unchanged", False)),
@@ -684,6 +964,11 @@ class TranslatorService:
         else:
             (stage / "context-terms-report.json").unlink(missing_ok=True)
         json_write(stage / "patch-meta.json", meta)
+        if provider_config.get("provider") not in (None, "offline-json") and provider_config.get("url"):
+            # Never persist provider credentials. Later API keys may be supplied
+            # explicitly through AION2_TRANSLATION_API_KEY.
+            json_write(self.data / "settings" / (target_lang + "-provider.json"),
+                dict(provider="libretranslate", url=provider_config["url"]))
         self.emit("Complete text package built locally. Use Install prepared language to apply it.", 100)
         return dict(stage=str(stage), target_language=target_lang, entries=len(source), status="prepared",
                     message="Language pack prepared. Review it, then close the game before installing.")
@@ -704,7 +989,7 @@ class TranslatorService:
 
     def export_source(self, game_dir):
         doc, _ = self._extract(game_dir)
-        output = self.data / "source" / BUILD / "entries.en.json"
+        output = self.data / "source" / self.build / "entries.en.json"
         json_write(output, doc.table.as_dict())
         self.emit("Original source map exported locally: " + str(output), 100)
         return dict(source_json=str(output), entries=len(doc.table.entries), status="exported")

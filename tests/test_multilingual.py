@@ -96,6 +96,8 @@ class SelectedPack(unittest.TestCase):
         self.game = self.fixture.game
 
     def ready(self, code, content):
+        value = {'tr': 'Ayarlar', 'fr': 'Paramètres'}.get(code, content.decode('utf8'))
+        content = self.fixture.doc.encode(self.fixture.doc.table.translated({'label': value}))
         stage = self.service.data / 'stages' / code
         stage.mkdir(parents=True, exist_ok=True)
         (stage / 'L10NString.dat').write_bytes(content)

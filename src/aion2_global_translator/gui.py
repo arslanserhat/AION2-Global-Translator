@@ -117,6 +117,9 @@ TEXT = {
 }
 
 
+TEXT["tr"].update(auto_update="Güncelleme sonrası otomatik onar", auto_update_work="Çeviri güncellemeye uyarlanıyor…", auto_waiting="Oyun kapanınca çeviri otomatik onarılacak.")
+TEXT["en"].update(auto_update="Repair automatically after game updates", auto_update_work="Adapting translation to the update…", auto_waiting="Translation repair will continue after the game closes.")
+
 def localized_service_error(message, language):
     message = str(message)
     if "[WinError 5]" in message:
@@ -161,6 +164,10 @@ class TranslatorApp:
         self.detail_text = tk.StringVar()
         self.validation_text = tk.StringVar()
         self.service = TranslatorService(on_event=self._service_event)
+        self._auto_checked = False
+        self._auto_timer = None
+        settings = self.service.automatic_settings() if hasattr(self.service, "automatic_settings") else {}
+        self.auto_enabled = tk.BooleanVar(value=settings.get("enabled", True))
         self._style()
         self._layout()
         self.game_path.trace_add("write", self._path_changed)
@@ -267,6 +274,9 @@ class TranslatorApp:
         self.repair_button.grid(row=4, column=0, sticky="ew", pady=(8, 0))
         self.restore_button = self._button(actions, "restore", self._restore, style="Main.TButton")
         self.restore_button.grid(row=5, column=0, sticky="ew", pady=(8, 0))
+        automatic = self._text(ttk.Checkbutton(actions, variable=self.auto_enabled, command=self._automatic_changed), "auto_update")
+        automatic.grid(row=6, column=0, sticky="w", pady=(8, 0))
+        self._controls.append(automatic)
 
         progress = ttk.Frame(body)
         progress.grid(row=4, column=0, sticky="ew", pady=(14, 13))
@@ -285,6 +295,27 @@ class TranslatorApp:
 
     def _path_changed(self, *_args):
         self.game_status.set(self.tr("game_selected" if self.game_path.get().strip() else "game_missing"))
+
+    def _automatic_changed(self):
+        if hasattr(self.service, "set_automatic"):
+            self.service.set_automatic(self.auto_enabled.get())
+        if self.auto_enabled.get():
+            self._schedule_automatic(150)
+        elif self._auto_timer is not None:
+            self.root.after_cancel(self._auto_timer)
+            self._auto_timer = None
+
+    def _schedule_automatic(self, delay):
+        if self._auto_timer is not None:
+            self.root.after_cancel(self._auto_timer)
+        self._auto_timer = self.root.after(delay, self._automatic_check)
+
+    def _automatic_check(self):
+        self._auto_timer = None
+        if self._busy:
+            self._schedule_automatic(500)
+        elif self.auto_enabled.get() and self.game_path.get().strip() and hasattr(self.service, "automatic_update"):
+            self._start("auto_update", self.service.automatic_update, self.game_path.get().strip())
 
     def _switch_language(self, _event=None):
         self.language = "en" if self.interface_language.get() == "English" else "tr"
@@ -440,6 +471,8 @@ class TranslatorApp:
             else:
                 self._status_key = "not_found"
             self._log(self.tr(self._status_key))
+            if path:
+                self.root.after(150, lambda: self._inspect(quiet=True))
             return
         if isinstance(result, dict):
             if operation == "inspect" or (operation in ("install", "install_stage", "restore", "repair")
@@ -453,6 +486,16 @@ class TranslatorApp:
                     self._log(self.tr("output") + ": " + str(result[key]))
             if operation == "build" and result.get("status") == "prepared":
                 self._status_key = "prepared"
+        if operation == "inspect" and not self._auto_checked:
+            self._auto_checked = True
+            self._schedule_automatic(150)
+        if operation == "auto_update" and isinstance(result, dict):
+            waiting = result.get("status") == "waiting_game"
+            if waiting:
+                self._status_key = "auto_waiting"
+            self._schedule_automatic(3000 if waiting else 15000)
+        if operation == "restore":
+            self.auto_enabled.set(False)
         self._log(self.tr("done"), "success")
         if operation in ("install", "install_stage"):
             self._log(self.tr("restart_hint"))

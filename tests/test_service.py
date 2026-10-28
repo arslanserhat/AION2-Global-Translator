@@ -7,6 +7,7 @@ import shutil
 import uuid
 from unittest.mock import patch
 from aion2_global_translator import service as s
+from aion2_global_translator.codec import FString, L10NDocument, L10NTable, locale_seed
 
 
 class Transactions(unittest.TestCase):
@@ -19,7 +20,7 @@ class Transactions(unittest.TestCase):
         exe = self.game / "Aion2/Binaries/Win64/AION2.exe"
         exe.parent.mkdir(parents=True)
         exe.write_bytes(b"synthetic executable")
-        (root / "steamapps/appmanifest_3393110.acf").write_text('"buildid" "26077854"')
+        (root / "steamapps/appmanifest_3393110.acf").write_text('"buildid" "' + s.BUILD + '"')
         self.pakdir = self.game / "Aion2/Content/Paks/L10N/Text/en-US"
         self.pakdir.mkdir(parents=True)
         self.original = {}
@@ -29,14 +30,23 @@ class Transactions(unittest.TestCase):
             self.original[s.PAK + ext] = data
         self.addCleanup(patch.stopall)
         patch.object(s, "ORIGINAL_SHA", s.sha(self.original[s.PAK + ".pak"])).start()
+        patch('aion2_global_translator.update_recovery.EMPTY_COMPANIONS',
+            {ext: s.sha(self.original[s.PAK + ext]) for ext in ('.ucas', '.utoc')}).start()
         patch.object(s, "game_running", return_value=False).start()
         self.service = s.TranslatorService(data_dir=root / "data")
         self.stage = root / "stage"
         self.stage.mkdir()
-        (self.stage / "L10NString.dat").write_bytes(b"synthetic translated DAT")
+        table = L10NTable(FString("AION2"), [(FString("label"), FString("Settings"))])
+        self.doc = L10NDocument(table, "en-US", b"", key=b"k" * 32, prefix=b"p" * 32)
+        self.manifest = {locale_seed("en-US"): b"k" * 32}
+        self.translated = self.doc.encode(self.doc.table.translated({"label": "Ayarlar"}))
+        (self.stage / "L10NString.dat").write_bytes(self.translated)
+        patch.object(s, "DISPLAY_ENTRY_COUNT", 1).start()
+        self.extraction = patch.object(self.service, "_extract", return_value=(self.doc, self.manifest))
+        self.extraction.start()
         self.meta = dict(steam_build=s.BUILD, original_pak_sha256=s.ORIGINAL_SHA,
                          quality_gate_passed=True, remaining_untranslated_candidate_entries=0,
-                         source_entry_count=s.DISPLAY_ENTRY_COUNT, dat_sha256=s.sha(b"synthetic translated DAT"), target_language="tr")
+                         source_entry_count=s.DISPLAY_ENTRY_COUNT, dat_sha256=s.sha(self.translated), target_language="tr")
         self.write_meta()
 
     def write_meta(self):
@@ -82,8 +92,9 @@ class Transactions(unittest.TestCase):
     def test_restore_refuses_updated_game_and_preserves_installed_data(self):
         self.service.install_stage(self.game, self.stage)
         (self.game.parents[1] / "appmanifest_3393110.acf").write_text('"buildid" "99999999"')
-        with self.assertRaises(ValueError):
-            self.service.restore(self.game)
+        with patch('aion2_global_translator.compatibility.probe_source', side_effect=ValueError('unverified updated source')):
+            with self.assertRaises(ValueError):
+                self.service.restore(self.game)
         self.assertEqual((self.pakdir / (s.PAK + ".pak")).read_bytes(), s.MARKER)
 
     def test_external_companion_changes_are_not_overwritten(self):
@@ -130,6 +141,7 @@ class Transactions(unittest.TestCase):
 
     def test_cached_source_checksum_is_verified_before_decode(self):
         from aion2_global_translator import codec
+        self.extraction.stop()
         extracted = self.service.data / "source" / s.BUILD
         dat = extracted / "locale/Aion2/Content/L10N/Text/en-US/L10NString.dat"
         manifest = extracted / "startup/Aion2/Content/StartUpData/Table/key_manifest.dat"

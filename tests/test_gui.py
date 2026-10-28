@@ -60,6 +60,19 @@ class FakeService:
 
 
 class LanguageSelectionGUI(unittest.TestCase):
+    def test_periodic_update_check_has_one_timer_and_can_be_disabled(self):
+        self.app._result('auto_update', {'status': 'unchanged'})
+        previous = self.app._auto_timer
+        self.assertIn(previous, self.root.tk.call('after', 'info'))
+        self.app._result('auto_update', {'status': 'waiting_game'})
+        self.assertNotIn(previous, self.root.tk.call('after', 'info'))
+        current = self.app._auto_timer
+        self.assertIn(current, self.root.tk.call('after', 'info'))
+        self.app.auto_enabled.set(False)
+        self.app._automatic_changed()
+        self.assertIsNone(self.app._auto_timer)
+        self.assertNotIn(current, self.root.tk.call('after', 'info'))
+
     def setUp(self):
         try:
             self.root = tk.Tk()

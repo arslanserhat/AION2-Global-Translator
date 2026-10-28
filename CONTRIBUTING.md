@@ -1,56 +1,58 @@
 # Contributing
 
-Contributions that improve format correctness, restoration, language handling, and clear reporting are welcome. Keep changes focused and make their behavior reviewable.
+Contributions should make native translation, update handling, restoration, and language behavior easier to verify. Keep a change focused on a concrete failure or user need.
 
 ## Before opening an issue
 
-Check [language compatibility](docs/LANGUAGES.md) and the [translation workflow](docs/TRANSLATION.md). Include:
+Read the [workflow](docs/TRANSLATION.md) and [language notes](docs/LANGUAGES.md). Include the app revision, Windows version, Steam build, source locale, target language, and a minimal reproduction.
 
-- App revision and Windows version.
-- Steam build, source locale, and target language code.
-- Whether the issue occurs during extraction, translation, validation, installation, restoration, or in-game rendering.
-- A small reproduction, expected behavior, and actual behavior.
-- For provider issues, its software/model information if available and a redacted error message.
+For update issues, distinguish source discovery, migration planning, provider translation, pending review, installation, restoration, and rendering. Give expected and actual behavior. Share redacted errors and relevant hashes/counts; do not attach a complete pending file or game table.
 
-Separate a launch report from visual confirmation and actual playtesting. Do not describe a target language as supported solely because it appears in a provider's language list.
+A successful launch, a provider language listing, structural validation, and an actual in-game display check are separate evidence.
 
-## Keep game data and secrets out
+## Keep game data and secrets private
 
-Do not submit game DATs, key manifests, extracted assets, game backups, full source or translated string tables, generated language bundles, translation caches, API keys, account details, or personal filesystem paths.
+Do not submit game DATs, key manifests, extracted assets, game backups, complete source/translated maps, generated packs, full update reviews, translation caches, API keys, account details, or personal paths.
 
-Use synthetic strings and temporary fixture directories in tests. For a formatting failure, a made-up sentence with the same placeholder/tag pattern is usually enough. If a short real text example is necessary, share only what you have the right to publish; do not attach a complete table to make debugging easier.
+Use synthetic strings and temporary fixture directories. Public contributions can include code, terminology guidance, and minimal rights-compatible examples. Complete game-derived maps stay in ignored `private-data` and out of release archives.
 
-## Code changes
+Provider configuration may retain a user-selected URL, never the API key. Later checks read `AION2_TRANSLATION_API_KEY` from the process environment. Do not add borrowed credentials, embedded public frontend keys, subscription bypasses, or silent uploads.
 
-1. Describe the concrete behavior being changed and why.
-2. Add meaningful tests for the affected failure mode. Tests must not require a real game installation, network provider, or account.
-3. For codec changes, check unchanged serialization and edited Unicode round trips.
-4. For installer changes, exercise failed writes, exact backup recovery, changed-file refusal, build mismatch, and paths outside the intended game scope using fixtures.
-5. For translation changes, preserve placeholders, tag order, controls, numerals, and non-positional printf argument order. Use a mocked provider.
-6. Update documentation when compatibility, data handling, or user-visible steps change.
+## Code and update changes
 
-Keep provider access explicit and configurable. Do not add embedded public frontend keys, borrowed credentials, subscription bypasses, or silent external uploads.
+1. Describe the trigger, resulting behavior, and validation.
+2. Use synthetic fixtures and mocked providers; tests must not need a game, account, or live endpoint.
+3. For codec changes, cover unchanged byte serialization and edited Unicode round trips.
+4. For source discovery, cover archive/startup fingerprints, complete verified caches, changed inputs, extraction failure, and source-format refusal.
+5. For migration, require identical **key and English value** for carry-forward. Test number-only changes, reused English under another key, removed keys, invalid corrections, incomplete providers, and preservation of the previous pack.
+6. For installation, cover backup ownership, concurrent edits, partial-write rollback, stale-source refusal, scoped paths, and the closed-game requirement.
+7. For automatic checks, cover waiting while the game runs and disabling repair when the user restores original files. Do not introduce a Windows startup task or service as an incidental change.
+8. For translations, protect macros, tag order, controls, numerals, technical abbreviations, and non-positional printf argument order. A format pass is not a semantic approval.
+
+Fresh builds may be investigated through verified local source fingerprints. Do not remove format or source-identity checks merely to accept a new build number.
 
 ## Tests
 
-The v0.1.1 source check passed **108 tests locally**. The suite uses synthetic fixtures and mocked services. Run it from a source installation with:
+The v0.1.3 source check passed **152 tests locally**. Run the suite from a source installation:
 
 ```powershell
 python -m unittest discover -s tests -v
 ```
 
-The tests do not establish in-game visual compatibility. The Windows GUI was also opened; Turkish/English layout and busy-state controls were checked separately. [docs/check-workflow.yml](docs/check-workflow.yml) provides an optional GitHub Actions workflow example; the test badge reports the local result rather than an active CI run.
+These tests use synthetic fixtures and mocked services. They do not prove the appearance or meaning of every game string. Full private-table checks and any real in-game observations must be reported separately.
+
+[docs/check-workflow.yml](docs/check-workflow.yml) is an optional GitHub Actions example. The README badge reports the stated local run; it is not an active CI result.
 
 ## Language contributions
 
-Report the provider and target code separately from font and in-game verification. Review terminology in context; identical English words can require different translations across screens. Passwords, riddles, and letter puzzles need human review.
+State the provider, target code, review scope, font observations, and gameplay checks separately. Identical words can need different translations across contexts. Review skill mechanics, quest directions, passwords, riddles, and acrostics manually.
 
-Contribute tooling, terminology guidance, and synthetic examples publicly. Keep complete game-derived translation maps out of pull requests until a rights-compatible distribution policy has been established. The current project does not distribute those maps.
+Turkish button/objective commands use singular imperatives such as `Konuş`, `Kullan`, `Topla`, and `Tamamla`. Names remain names and descriptive skill text remains descriptive. Do not apply Turkish grammar rules to another language.
 
 ## Attribution and releases
 
-The AION 2 codec is adapted from [CUE4Parse](https://github.com/FabianFG/CUE4Parse/tree/master/CUE4Parse/GameTypes/Aion2). Preserve applicable attribution and [Apache-2.0](https://github.com/FabianFG/CUE4Parse/blob/master/LICENSE) notices, and identify modified/adapted files. Keep third-party notices with release artifacts.
+The codec adapts [CUE4Parse](https://github.com/FabianFG/CUE4Parse/tree/master/CUE4Parse/GameTypes/Aion2). Preserve applicable copyright and [Apache-2.0](https://github.com/FabianFG/CUE4Parse/blob/master/LICENSE) notices.
 
-The external [repak](https://github.com/trumank/repak) tool has its own MIT/Apache-2.0 licensing. Source users obtain it separately; the Windows release ZIP includes version 0.2.3 with its upstream license texts in `licenses/repak/`. Preserve those notices when rebuilding or redistributing the archive.
+[repak](https://github.com/trumank/repak) has MIT/Apache-2.0 licensing. Source users obtain it separately; the Windows ZIP includes version 0.2.3 and upstream notices in `licenses/repak/`.
 
-Before a public release, inspect the actual archive contents for excluded game data, credentials, and local paths. State the exact app revision, tested game build, known limitations, and whether in-game appearance was checked. Do not publish fabricated success badges or imply publisher approval.
+Before publishing, inspect the actual archive for game data, credentials, generated reviews, and local paths. State the exact app revision, tested source build, automated-check scope, and whether game rendering was checked. Do not publish placeholder test counts or imply publisher approval.

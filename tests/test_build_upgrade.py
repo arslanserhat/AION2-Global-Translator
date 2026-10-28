@@ -45,14 +45,15 @@ class BuildUpgrade(unittest.TestCase):
         return u.recover_known_update(self.pakdir, self.loose, self.backup, closed)
 
     def test_current_build_and_entry_count_are_explicit(self):
-        self.assertEqual(s.BUILD, "26077854")
-        self.assertEqual(s.DISPLAY_ENTRY_COUNT, 153185)
+        self.assertEqual(s.BUILD, "26262663")
+        self.assertEqual(s.DISPLAY_ENTRY_COUNT, 153297)
 
     def test_unknown_build_reports_actual_and_leaves_files_untouched(self):
         self.manifest.write_text('"buildid" "99999999"')
         before = self.loose.read_bytes()
-        with self.assertRaisesRegex(ValueError, "Found 99999999; expected 26077854"):
-            self.service.paths(self.game)
+        with patch("aion2_global_translator.compatibility.probe_source", side_effect=ValueError("Unsupported source format")):
+            with self.assertRaisesRegex(ValueError, "Unsupported source format"):
+                self.service.paths(self.game)
         self.assertEqual(self.loose.read_bytes(), before)
 
     def test_recovery_preserves_updated_pak_and_sig_and_archives_old_loose(self):
